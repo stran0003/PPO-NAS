@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPO-NAS 搜索空间拓扑结构</title>
+<style>
+  :root {
+    --blue:#2b6cb0; --red:#e53e3e; --green:#38a169; --yellow:#d69e2e;
+    --purple:#6b46c1; --orange:#dd6b20; --teal:#319795; --grey:#718096;
+    --bg:#f7fafc; --card:#fff; --text:#1a202c; --border:#e2e8f0;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;background:var(--bg);color:var(--text);line-height:1.7}
+  .container{max-width:1300px;margin:0 auto;padding:30px 20px}
+  h1{text-align:center;color:var(--blue);font-size:2em;margin-bottom:4px}
+  .sub{text-align:center;color:var(--grey);margin-bottom:30px;font-size:.9em}
+  h2{color:var(--blue);border-left:4px solid var(--blue);padding:6px 16px;background:#ebf4ff;border-radius:0 6px 6px 0;margin:40px 0 16px;font-size:1.25em}
+
+  /* ── 主拓扑 ── */
+  .topology{display:flex;align-items:stretch;gap:0;margin:20px 0;overflow-x:auto;padding:10px 0}
+  .layer-card{min-width:145px;flex:1;text-align:center;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  .layer-card.linear{border:2px solid var(--blue)}
+  .layer-card.lut{border:2px solid var(--orange)}
+  .layer-head{padding:12px 8px;color:#fff;font-weight:700;font-size:1em}
+  .layer-card.linear .layer-head{background:linear-gradient(135deg,#2b6cb0,#3182ce)}
+  .layer-card.lut .layer-head{background:linear-gradient(135deg,#9c4221,#dd6b20)}
+  .layer-body{padding:12px 10px;background:var(--card);font-size:.82em}
+  .layer-body table{width:100%;font-size:.85em}
+  .layer-body td{padding:4px 6px;border:none;text-align:center}
+  .layer-body .opt-name{color:var(--grey);font-size:.8em}
+  .layer-body .opt-val{font-weight:600;font-size:.95em}
+  .layer-body .opt-count{font-size:.75em;color:var(--grey)}
+  .connector{display:flex;align-items:center;justify-content:center;min-width:30px;flex-shrink:0}
+  .connector .arrow{font-size:1.6em;color:var(--grey);font-weight:bold}
+
+  /* ── 展开图：单层内部结构 ── */
+  .layer-detail{margin:20px 0}
+  .expand{background:var(--card);border-radius:12px;border:2px solid var(--border);overflow:hidden;margin:16px 0}
+  .expand-head{padding:14px 20px;color:#fff;font-weight:700;font-size:1.05em;cursor:pointer}
+  .expand.linear .expand-head{background:linear-gradient(135deg,#2b6cb0,#3182ce)}
+  .expand.lut .expand-head{background:linear-gradient(135deg,#9c4221,#dd6b20)}
+  .expand-body{padding:20px 24px}
+  .decision-tree{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
+  .dt-branch{flex:1;min-width:200px;border:1px solid var(--border);border-radius:10px;padding:16px;background:#f7fafc;text-align:center}
+  .dt-branch .branch-label{font-weight:700;font-size:.9em;margin-bottom:8px;padding:4px 12px;border-radius:4px;display:inline-block}
+  .dt-branch .branch-label.gp{background:#bee3f8;color:#2b6cb0}
+  .dt-branch .branch-label.o2o{background:#c6f6d5;color:#276749}
+  .dt-branch .options{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:8px}
+  .opt-chip{display:inline-block;padding:6px 14px;border-radius:20px;font-size:.85em;font-weight:600;white-space:nowrap}
+  .opt-chip.kernel{background:#ebf4ff;color:#2b6cb0;border:1px solid #bee3f8}
+  .opt-chip.kernel.forced{background:#fed7d7;color:#9b2c2c;border:1px solid #feb2b2;text-decoration:line-through}
+  .opt-chip.init{background:#faf5ff;color:#553c9a;border:1px solid #e9d8fd}
+  .opt-chip.spline{background:#fff5f5;color:#9c4221;border:1px solid #feb2b2}
+
+  /* ── 统计卡片 ── */
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:16px 0}
+  .stat-card{background:var(--card);border-radius:10px;padding:18px 20px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid var(--border)}
+  .stat-card .num{font-size:2em;font-weight:800;color:var(--blue)}
+  .stat-card .lbl{font-size:.85em;color:var(--grey);margin-top:4px}
+  .stat-card.highlight{border-color:var(--red)} .stat-card.highlight .num{color:var(--red)}
+
+  /* ── 路径示例 ── */
+  .path-example{background:var(--code-bg,#1a202c);color:#e2e8f0;padding:16px 20px;border-radius:10px;margin:12px 0;font-family:monospace;font-size:.85em;line-height:1.7}
+  .path-example .layer{display:inline-block;padding:3px 10px;margin:2px 4px;border-radius:4px;font-size:.9em}
+  .path-example .layer.lin{background:#2b6cb0;color:#fff}
+  .path-example .layer.lt{background:#dd6b20;color:#fff}
+  .path-example .arrow-c{color:#a0aec0}
+
+  @media(max-width:900px){.topology{flex-direction:column}.connector{transform:rotate(90deg)}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🗂️ PPO-NAS 搜索空间拓扑结构</h1>
+<p class="sub">基于 libs/model/search_space.py · 生成于 2026-06-05</p>
+
+<!-- ====== 总览统计 ====== -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="num">7</div><div class="lbl">层 (固定顺序)</div>
+  </div>
+  <div class="stat-card">
+    <div class="num">6</div><div class="lbl">线性层 (L1-L3, L5-L7)</div>
+  </div>
+  <div class="stat-card">
+    <div class="num">1</div><div class="lbl">LUT 非线性层 (L4)</div>
+  </div>
+  <div class="stat-card">
+    <div class="num">6</div><div class="lbl">种/线性层 (5 grouped + 1 1×1)</div>
+  </div>
+  <div class="stat-card">
+    <div class="num">5</div><div class="lbl">种/LUT层 (spline数)</div>
+  </div>
+  <div class="stat-card highlight">
+    <div class="num">233,280</div><div class="lbl">总搜索空间 (6⁶×5)</div>
+  </div>
+</div>
+
+<!-- ====== 1. 七层主拓扑 ====== -->
+<h2>1. 七层主拓扑</h2>
+
+<div class="topology">
+  <!-- L1 -->
+  <div class="layer-card linear">
+    <div class="layer-head">L1 · 线性层</div>
+    <div class="layer-body">
+      <table>
+        <tr><td class="opt-name">卷积类型</td><td class="opt-val">grouped / 1×1</td><td class="opt-count">2</td></tr>
+        <tr><td class="opt-name">卷积核</td><td class="opt-val">3,5,7,9,11</td><td class="opt-count">5</td></tr>
+        <tr><td class="opt-name">初始化</td><td class="opt-val">center_spike</td><td class="opt-count">1</td></tr>
+      </table>
+      <div style="margin-top:6px;font-size:.78em;color:var(--grey)">有效组合: <b>6</b></div>
+    </div>
+  </div>
+  <div class="connector"><span class="arrow">→</span></div>
+  <!-- L2 -->
+  <div class="layer-card linear">
+    <div class="layer-head">L2 · 线性层</div>
+    <div class="layer-body">
+      <table>
+        <tr><td class="opt-name">卷积类型</td><td class="opt-val">grouped / 1×1</td><td class="opt-count">2</td></tr>
+        <tr><td class="opt-name">卷积核</td><td class="opt-val">3,5,7,9,11</td><td class="opt-count">5</td></tr>
+        <tr><td class="opt-name">初始化</td><td class="opt-val">center_spike</td><td class="opt-count">1</td></tr>
+      </table>
+      <div style="margin-top:6px;font-size:.78em;color:var(--grey)">有效组合: <b>6</b></div>
+    </div>
+  </div>
+  <div class="connector"><span class="arrow">→</span></div>
+  <!-- L3 -->
+  <div class="layer-card linear">
+    <div class="layer-head">L3 · 线性层</div>
+    <div class="layer-body">
+      <table>
+        <tr><td class="opt-name">卷积类型</td><td class="opt-val">grouped / 1×1</td><td class="opt-count">2</td></tr>
+        <tr><td class="opt-name">卷积核</td><td class="opt-val">3,5,7,9,11</td><td class="opt-count">5</td></tr>
+        <tr><td class="opt-name">初始化</td><td class="opt-val">center_spike</td><td class="opt-count">1</td></tr>
+      </table>
+      <div style="margin-top:6px;font-size:.78em;color:var(--grey)">有效组合: <b>6</b></div>
+    </div>
+  </div>
+  <div class="connector"><span class="arrow">→</span></div>
+  <!-- L4 - LUT -->
+  <div class="layer-card lut">
+    <div class="layer-head">L4 · LUT 非线性层</div>
+    <div class="layer-body">
+      <table>
+        <tr><td class="opt-name">样条数</td><td class="opt-val">4,8,16,32,64</td><td class="opt-count">5</td></tr>
+      </table>
+      <div style="margin-top:6px;font-size:.78em;color:var(--grey)">有效组合: <b>5</b></div>
+    </div>
+  </div>
+  <div class="connector"><span class="arrow">→</span></div>
+  <!-- L5 -->
+  <div class="layer-card linear">
+    <div class="layer-head">L5 · 线性层</div>
+    <div class="layer-body">
+      <table>
+        <tr><td class="opt-name">卷积类型</td><td class="opt-val">grouped / 1×1</td><td class="opt-count">2</td></tr>
+        <tr><td class="opt-name">卷积核</td><td class="opt-val">3,5,7,9,11</td><td class="opt-count">5</td></tr>
+        <tr><td class="opt-name">初始化</td><td class="opt-val">center_spike</td><td class="opt-count">1</td></tr>
+      </table>
+      <div style="margin-top:6px;font-size:.78em;color:var(--grey)">有效组合: <b>6</b></div>
+    </div>
+  </div>
+  <div class="connector"><span class="arrow">→</span></div>
+  <!-- L6 -->
+  <div class="layer-card linear">
+    <div class="layer-head">L6 · 线性层</div>
+    <div class="layer-body">
+      <table>
+        <tr><td class="opt-name">卷积类型</td><td class="opt-val">grouped / 1×1</td><td class="opt-count">2</td></tr>
+        <tr><td class="opt-name">卷积核</td><td class="opt-val">3,5,7,9,11</td><td class="opt-count">5</td></tr>
+        <tr><td class="opt-name">初始化</td><td class="opt-val">center_spike</td><td class="opt-count">1</td></tr>
+      </table>
+      <div style="margin-top:6px;font-size:.78em;color:var(--grey)">有效组合: <b>6</b></div>
+    </div>
+  </div>
+  <div class="connector"><span class="arrow">→</span></div>
+  <!-- L7 -->
+  <div class="layer-card linear">
+    <div class="layer-head">L7 · 线性层</div>
+    <div class="layer-body">
+      <table>
+        <tr><td class="opt-name">卷积类型</td><td class="opt-val">grouped / 1×1</td><td class="opt-count">2</td></tr>
+        <tr><td class="opt-name">卷积核</td><td class="opt-val">3,5,7,9,11</td><td class="opt-count">5</td></tr>
+        <tr><td class="opt-name">初始化</td><td class="opt-val">center_spike</td><td class="opt-count">1</td></tr>
+      </table>
+      <div style="margin-top:6px;font-size:.78em;color:var(--grey)">有效组合: <b>6</b></div>
+    </div>
+  </div>
+</div>
+
+<div style="text-align:center;color:var(--grey);font-size:.85em;margin-bottom:12px">
+  总搜索空间 = 6 × 6 × 6 × 5 × 6 × 6 × 6 = <b>233,280</b> 种架构
+</div>
+
+<!-- ====== 2. 线性层内部决策树 ====== -->
+<h2>2. 线性层内部决策树</h2>
+<p>每个线性层，Controller 按顺序做 3 个独立决策：</p>
+
+<div class="expand linear">
+  <div class="expand-head">⚙️ 线性层 (L1-L3, L5-L7) — 单个层的决策展开</div>
+  <div class="expand-body">
+    <div class="decision-tree">
+
+      <!-- 步骤1: 选卷积类型 -->
+      <div class="dt-branch" style="background:#ebf4ff">
+        <div class="branch-label" style="background:#2b6cb0;color:#fff">第①步：选卷积类型</div>
+        <div class="options">
+          <span class="opt-chip kernel">grouped</span>
+          <span class="opt-chip kernel">1×1</span>
+        </div>
+        <div style="font-size:.78em;color:var(--grey);margin-top:6px">2 选 1 → Categorical(2)</div>
+      </div>
+
+      <div style="display:flex;align-items:center;font-size:1.5em;color:var(--grey)">→</div>
+
+      <!-- 步骤2a: grouped → 选kernel -->
+      <div class="dt-branch" style="border-color:#2b6cb0">
+        <div class="branch-label gp">第②步：选卷积核 (仅 grouped)</div>
+        <div class="options">
+          <span class="opt-chip kernel">k=3</span>
+          <span class="opt-chip kernel">k=5</span>
+          <span class="opt-chip kernel">k=7</span>
+          <span class="opt-chip kernel">k=9</span>
+          <span class="opt-chip kernel">k=11</span>
+        </div>
+        <div style="font-size:.78em;color:var(--grey);margin-top:6px">5 选 1 → Categorical(5)</div>
+        <div style="font-size:.78em;color:var(--green);margin-top:4px">✅ log P(kernel) 计入</div>
+      </div>
+
+      <!-- 步骤2b: 1×1 → kernel=1 固定 -->
+      <div class="dt-branch" style="border-color:#c6f6d5;background:#f0fff4">
+        <div class="branch-label o2o">第②步：选卷积核 (仅 1×1)</div>
+        <div class="options">
+          <span class="opt-chip kernel forced">kernel=1 (强制)</span>
+        </div>
+        <div style="font-size:.78em;color:var(--grey);margin-top:6px">不采样，固定为1</div>
+        <div style="font-size:.78em;color:var(--red);margin-top:4px">❌ log P(kernel) 不计入 (mask=0)</div>
+      </div>
+
+      <div style="display:flex;align-items:center;font-size:1.5em;color:var(--grey)">→</div>
+
+      <!-- 步骤3: 选初始化 -->
+      <div class="dt-branch" style="background:#faf5ff">
+        <div class="branch-label" style="background:#553c9a;color:#fff">第③步：选初始化策略</div>
+        <div class="options">
+          <span class="opt-chip init">center_spike</span>
+        </div>
+        <div style="font-size:.78em;color:var(--grey);margin-top:6px">1 选 1 → Categorical(1) → 熵=0</div>
+        <div style="font-size:.78em;color:var(--green);margin-top:4px">✅ 始终选中，log P ≡ 0</div>
+      </div>
+
+    </div>
+
+    <div style="margin-top:20px;padding:12px 16px;background:#f7fafc;border-radius:8px;font-size:.88em">
+      <b>有效组合数</b>：grouped(5种kernel) + 1×1(1种) = <b>6 种</b><br>
+      <b>log P</b>：grouped → log P(conv) + log P(kernel) + 0(init)；1×1 → log P(conv) + 0 + 0(init)<br>
+      <b>init=center_spike 只有一种</b>：log P(init) 恒为 0，熵恒为 0，<b>不参与 PPO 更新</b>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 3. LUT层决策树 ====== -->
+<h2>3. LUT 层内部决策树</h2>
+
+<div class="expand lut">
+  <div class="expand-head">📐 LUT 层 (L4) — 单个层的决策展开</div>
+  <div class="expand-body">
+    <div class="decision-tree">
+
+      <div class="dt-branch" style="background:#fff5f5;border-color:#dd6b20">
+        <div class="branch-label" style="background:#dd6b20;color:#fff">唯一步骤：选样条数</div>
+        <div class="options">
+          <span class="opt-chip spline">sp=4</span>
+          <span class="opt-chip spline">sp=8</span>
+          <span class="opt-chip spline">sp=16</span>
+          <span class="opt-chip spline">sp=32</span>
+          <span class="opt-chip spline">sp=64</span>
+        </div>
+        <div style="font-size:.78em;color:var(--grey);margin-top:6px">5 选 1 → Categorical(5)</div>
+      </div>
+
+      <div style="display:flex;align-items:center;font-size:1.5em;color:var(--grey)">→</div>
+
+      <div class="dt-branch" style="background:#faf5ff">
+        <div style="font-size:.88em">
+          <b>log P</b> = log P(spline)<br>
+          <b>熵</b> = H(P_spline)<br>
+          <b>没有</b> kernel/init/conv 的选择
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:12px 16px;background:#f7fafc;border-radius:8px;font-size:.88em">
+      <b>有效组合数</b>：<b>5 种</b><br>
+      <b>为什么只有一步决策</b>：LUT 层是非线性查表层，不需要卷积核、不需要卷积类型、不需要特殊的初始化——只需要决定用多少个样条点来近似非线性函数<br>
+      <b>NN.ModuleDict 双表</b>：实际实现中存两个 LUT 表，根据输入信号类型（mm参数）切换查询
+    </div>
+  </div>
+</div>
+
+<!-- ====== 4. 完整路径示例 ====== -->
+<h2>4. 一个具体架构的生成路径</h2>
+
+<p>Controller.forward(1) 逐时间步采样的完整过程：</p>
+
+<div class="path-example">
+<span style="color:#a0aec0">t=0 (L1):</span>
+  actor_conv → <span style="color:#68d391">grouped</span> (P=0.62)
+  actor_kernel → <span style="color:#68d391">k=7</span> (P=0.28)
+  actor_init → <span style="color:#68d391">center_spike</span> (P=1.00)
+  <span class="layer lin">L1(grouped, k=7, init=center_spike)</span>
+  <span style="color:#a0aec0">log P = -0.48 + (-1.27) = -1.75</span>
+
+<span class="arrow-c">↓ encode → 21维向量 → LSTM</span>
+
+<span style="color:#a0aec0">t=1 (L2):</span>
+  actor_conv → <span style="color:#fc8181">1×1</span> (P=0.38)
+  actor_kernel → 采样了 k=3 <span style="color:#a0aec0">但 mask=0，不计入</span>
+  actor_init → <span style="color:#68d391">center_spike</span> (P=1.00)
+  <span class="layer lin">L2(1×1, k=1, init=center_spike)</span>
+  <span style="color:#a0aec0">log P = -0.97 + 0 = -0.97  (kernel 的 log P 被 mask 掉了)</span>
+
+<span class="arrow-c">↓ encode → LSTM</span>
+
+<span style="color:#a0aec0">t=2 (L3):</span>
+  actor_conv → <span style="color:#68d391">grouped</span>
+  actor_kernel → <span style="color:#68d391">k=11</span>
+  <span class="layer lin">L3(grouped, k=11, init=center_spike)</span>
+
+<span class="arrow-c">↓ encode → LSTM</span>
+
+<span style="color:#a0aec0">t=3 (L4-LUT):</span>
+  actor_spline → <span style="color:#68d391">sp=16</span> (P=0.35)
+  <span class="layer lt">L4(LUT, sp=16)</span>
+  <span style="color:#a0aec0">log P = -1.05</span>
+
+<span class="arrow-c">↓ encode → LSTM</span>
+
+<span style="color:#a0aec0">t=4 (L5):</span>
+  <span class="layer lin">L5(grouped, k=5, init=center_spike)</span>
+
+<span class="arrow-c">↓ encode → LSTM</span>
+
+<span style="color:#a0aec0">t=5 (L6):</span>
+  <span class="layer lin">L6(1×1, k=1, init=center_spike)</span>
+
+<span class="arrow-c">↓ encode → LSTM</span>
+
+<span style="color:#a0aec0">t=6 (L7):</span>
+  <span class="layer lin">L7(grouped, k=3, init=center_spike)</span>
+</div>
+
+<!-- ====== 5. 搜索空间参数一览 ====== -->
+<h2>5. 搜索空间参数一览</h2>
+
+<div class="card" style="background:var(--card);border-radius:10px;padding:20px 26px;margin:14px 0;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid var(--border)">
+<table>
+  <tr><th>变量</th><th>当前值</th><th>含义</th><th>定义位置</th></tr>
+  <tr><td>LAYER_TYPES</td><td>["linear"]×3 + ["lut"] + ["linear"]×3</td><td>7层固定顺序</td><td>search_space.py:32</td></tr>
+  <tr><td>KERNEL_SIZES</td><td>[3, 5, 7, 9, 11]</td><td>分组卷积的核大小选项</td><td>search_space.py:22</td></tr>
+  <tr><td>CONV_TYPES</td><td>["grouped", "1x1"]</td><td>卷积类型 (1×1=合路层, kernel强制为1)</td><td>search_space.py:23</td></tr>
+  <tr><td>SPLINE_COUNTS</td><td>[4, 8, 16, 32, 64]</td><td>LUT层的样条数量选项</td><td>search_space.py:24</td></tr>
+  <tr><td>INIT_STRATEGIES</td><td>["center_spike"]</td><td>线性层初始化策略 (仅1种, 等效于固定)</td><td>search_space.py:26</td></tr>
+</table>
+</div>
+
+<!-- ====== 6. 采样过程示意 ====== -->
+<h2>6. Controller 逐时间步采样的 Actor 头调用</h2>
+
+<table>
+  <tr><th>时间步</th><th>层</th><th>调用的 Actor 头</th><th>采样次数</th><th>有效决策数</th></tr>
+  <tr>
+    <td>t=0,1,2</td><td>L1-L3 (线性)</td>
+    <td>actor_conv(2) + actor_kernel(5) + actor_init(1)</td>
+    <td>3 次</td>
+    <td>grouped: 3次 / 1×1: 2次</td>
+  </tr>
+  <tr>
+    <td>t=3</td><td>L4 (LUT)</td>
+    <td>actor_spline(5)</td>
+    <td>1 次</td>
+    <td>1 次</td>
+  </tr>
+  <tr>
+    <td>t=4,5,6</td><td>L5-L7 (线性)</td>
+    <td>actor_conv(2) + actor_kernel(5) + actor_init(1)</td>
+    <td>3 次</td>
+    <td>grouped: 3次 / 1×1: 2次</td>
+  </tr>
+</table>
+
+<div style="padding:14px 18px;background:#f7fafc;border-radius:8px;margin-top:12px;font-size:.9em">
+  <b>每生成一个架构，Controller 做 19 次独立采样</b>（6层线性×3 + 1层LUT×1），但只有 <b>grouped 的线性层</b>（kernel 也计入）才完整记录 log P。<br>
+  <b>init=center_spike 固定</b> → 6 次 init 采样的 log P ≡ 0，熵 ≡ 0，不贡献梯度。<br>
+  <b>1×1 层</b> → 6 次中的 ?? 次（取决于选了多少 1×1），kernel 的 log P 不计入。
+</div>
+
+<p style="text-align:center;color:var(--grey);margin:40px 0">PPO-NAS 搜索空间拓扑 · 生成于 2026-06-05</p>
+
+</div>
+</body>
+</html>

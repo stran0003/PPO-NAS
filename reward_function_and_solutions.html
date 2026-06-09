@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>奖励函数设计方案与困难解决方案 —— 文献调研报告</title>
+<style>
+  :root {
+    --primary: #1a365d;
+    --secondary: #2b6cb0;
+    --accent: #e53e3e;
+    --bg: #f7fafc;
+    --card-bg: #ffffff;
+    --text: #2d3748;
+    --text-light: #4a5568;
+    --border: #e2e8f0;
+    --success: #38a169;
+    --warning: #d69e2e;
+    --info: #3182ce;
+    --purple: #6b46c1;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.8;
+    padding: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+  .header {
+    background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
+    color: white;
+    padding: 60px 20px;
+    text-align: center;
+    border-radius: 0 0 20px 20px;
+    margin-bottom: 40px;
+  }
+  .header h1 { font-size: 2.2em; margin-bottom: 10px; }
+  .header .subtitle { font-size: 1.1em; opacity: 0.85; }
+
+  .section {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 35px 40px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-left: 4px solid var(--secondary);
+  }
+  .section h2 {
+    color: var(--primary);
+    font-size: 1.5em;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--border);
+  }
+  .section h3 {
+    color: var(--secondary);
+    font-size: 1.15em;
+    margin: 20px 0 10px;
+  }
+  .section h4 {
+    color: var(--text);
+    font-size: 1.05em;
+    margin: 15px 0 8px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    font-size: 0.95em;
+  }
+  th {
+    background: var(--primary);
+    color: white;
+    padding: 12px 15px;
+    text-align: left;
+    font-weight: 600;
+  }
+  td {
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f7fafc; }
+  tr:hover td { background: #ebf8ff; }
+
+  .tag {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.82em;
+    font-weight: 600;
+    margin: 2px;
+  }
+  .tag-blue { background: #bee3f8; color: #1a365d; }
+  .tag-green { background: #c6f6d5; color: #22543d; }
+  .tag-red { background: #fed7d7; color: #742a2a; }
+  .tag-yellow { background: #fefcbf; color: #744210; }
+  .tag-purple { background: #e9d8fd; color: #44337a; }
+
+  ul, ol { margin: 10px 0 10px 25px; }
+  li { margin: 6px 0; }
+
+  .highlight-box {
+    border-radius: 10px;
+    padding: 20px 25px;
+    margin: 15px 0;
+  }
+  .box-red { background: #fff5f5; border: 2px solid #fc8181; }
+  .box-red h4 { color: #c53030; }
+  .box-green { background: #f0fff4; border: 2px solid #68d391; }
+  .box-green h4 { color: #276749; }
+  .box-blue { background: #ebf8ff; border: 2px solid #63b3ed; }
+  .box-blue h4 { color: #2b6cb0; }
+  .box-yellow { background: #fffff0; border: 2px solid #ecc94b; }
+  .box-yellow h4 { color: #975a16; }
+  .box-purple { background: #faf5ff; border: 2px solid #b794f4; }
+  .box-purple h4 { color: #6b46c1; }
+
+  .formula-box {
+    background: #1a202c;
+    color: #e2e8f0;
+    padding: 20px 25px;
+    border-radius: 10px;
+    margin: 15px 0;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 0.95em;
+    overflow-x: auto;
+    line-height: 2;
+  }
+
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin: 15px 0;
+  }
+  .card {
+    background: #f7fafc;
+    border-radius: 10px;
+    padding: 20px;
+    border: 1px solid var(--border);
+  }
+  .card h4 { margin-top: 0; color: var(--secondary); }
+
+  .ref-item {
+    padding: 12px 15px;
+    margin: 8px 0;
+    background: #f7fafc;
+    border-radius: 8px;
+    border-left: 3px solid var(--info);
+  }
+  .ref-item strong { color: var(--primary); }
+
+  .comparison-table th:first-child { min-width: 180px; }
+
+  code {
+    background: #edf2f7;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 0.9em;
+  }
+
+  .footer { text-align: center; padding: 30px; color: #a0aec0; font-size: 0.9em; }
+
+  .rec-badge {
+    display: inline-block;
+    background: var(--accent);
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75em;
+    font-weight: 700;
+    margin-left: 5px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📊 奖励函数设计方案与困难解决方案</h1>
+  <p class="subtitle">基于文献调研的 PPO-NAS 奖励函数设计与搜索加速策略</p>
+  <p class="subtitle" style="margin-top:5px; font-size:0.9em;">汇报日期：2026年6月1日</p>
+</div>
+
+<div class="container">
+
+<!-- ==================== 执行摘要 ==================== -->
+<div class="section">
+  <h2>执行摘要</h2>
+  <p>
+    本报告针对"基于 PPO 的 NAS 研究方案"中识别出的<strong>两大核心困难</strong>——<strong>奖励函数设计</strong>与<strong>搜索时间过长</strong>——进行了系统的文献调研。基于 MnasNet、NPG-NAS、ENAS、MARCO、APQ、RANK-NOSH 等代表性工作，提出了一套<strong>分层的奖励函数设计方案</strong>（包含四种可选策略）和<strong>三种搜索加速方案</strong>（短训练代理 + 渐进淘汰、权重共享超网、零成本代理预筛选）。
+  </p>
+  <p style="margin-top:10px;">
+    <strong>核心建议：</strong>奖励函数采用 <span class="tag tag-green">NPG-NAS 风格的退火期望函数（ADF）</span> + <span class="tag tag-blue">多 case 平均性能</span>的组合方案；搜索加速采用 <span class="tag tag-yellow">短训练（300 epoch）+ RANK-NOSH 渐进淘汰</span>为主策略，<span class="tag tag-purple">逐层权重共享</span>为辅助策略。
+  </p>
+</div>
+
+<!-- ==================== Part 1: 奖励函数设计 ==================== -->
+<div class="section">
+  <h2>第一部分：奖励函数设计方案</h2>
+
+  <h3>1.1 问题分析</h3>
+  <p>DPD 模型的奖励函数需同时考虑以下维度：</p>
+  <ul>
+    <li><strong>性能维度：</strong>NMSE（归一化均方误差）、EVM（误差向量幅度）、ACLR（邻道泄漏比）</li>
+    <li><strong>资源维度：</strong>参数量、MACs（乘加运算数）、推理延迟</li>
+    <li><strong>泛化维度：</strong>多个 case 上的性能均值和方差</li>
+  </ul>
+  <p>关键挑战在于：这些目标之间存在<strong>竞争关系</strong>（更小的模型通常性能更差），且单一加权公式无法到达非凸 Pareto 前沿上的解（Chen et al., 2020）。</p>
+
+  <h3>1.2 方案一：加权乘积奖励（MnasNet 风格）<span class="rec-badge">推荐作基线</span></h3>
+  <p><strong>来源：</strong>Tan et al., "MnasNet: Platform-Aware Neural Architecture Search for Mobile", CVPR 2019</p>
+  <p><strong>核心思想：</strong>将多目标通过加权乘积组合为单一标量奖励。</p>
+
+  <div class="formula-box">
+    <strong>R(m) = ACC(m) × [Cost(m) / T]<sup>w</sup></strong><br><br>
+    其中：<br>
+    &nbsp;&nbsp;ACC(m) = 模型 m 的性能指标（如 -NMSE，越大越好）<br>
+    &nbsp;&nbsp;Cost(m) = 资源消耗（参数量或 MACs）<br>
+    &nbsp;&nbsp;T = 目标资源阈值<br>
+    &nbsp;&nbsp;w = 控制性能-资源权衡的权重（w &lt; 0 时惩罚超出目标；w = -0.07 是原论文常用值）
+  </div>
+
+  <p><strong>针对 DPD 场景的适配：</strong></p>
+  <div class="formula-box">
+    <strong>R(arch) = (-NMSE<sub>avg</sub>) × [Params(arch) / Params<sub>target</sub>]<sup>w</sup> × Penalty(EVM)</strong><br><br>
+    其中：<br>
+    &nbsp;&nbsp;NMSE<sub>avg</sub> = K 个 case 上的平均 NMSE（dB），取负号使"越小越好"变为"越大越好"<br>
+    &nbsp;&nbsp;Params<sub>target</sub> = 目标参数量（如基线模型的 70%）<br>
+    &nbsp;&nbsp;w = -0.07 ~ -0.15，控制对超额参数的惩罚力度<br>
+    &nbsp;&nbsp;Penalty(EVM) = 若 EVM 超过门限则乘以 &lt;1 的惩罚因子（可选）
+  </div>
+
+  <div class="box-yellow highlight-box">
+    <h4>⚠️ 局限性</h4>
+    <p>每个权重配置只能找到 Pareto 前沿上的<strong>一个点</strong>；对于非凸 Pareto 前沿，该方法可能完全错过某些高质量解。TabNAS（2022）发现 MnasNet 奖励在约束搜索空间中仅有 &lt;1% 的成功率。</p>
+  </div>
+
+  <h3>1.3 方案二：退火期望函数（ADF, NPG-NAS 风格）<span class="rec-badge">强烈推荐</span></h3>
+  <p><strong>来源：</strong>Chen et al., "Multi-objective Neural Architecture Search via Non-stationary Policy Gradient", arXiv:2001.08437</p>
+  <p><strong>核心思想：</strong>不固定资源目标的权重，而是让资源目标<strong>在整个搜索过程中逐步退火</strong>，使策略能够适应从"宽松"到"严格"的资源约束，在<strong>单次搜索运行中覆盖整个 Pareto 前沿</strong>。</p>
+
+  <div class="formula-box">
+    <strong>核心机制：三角期望函数 F<sub>2</sub>(τ, δ)</strong><br><br>
+    设资源消耗 c = Params(arch)，定义期望函数：<br>
+    &nbsp;&nbsp;F<sub>2</sub>(c; τ, δ) = max(0, 1 - |c - τ| / δ)<br><br>
+    其中 τ 是当前目标资源值（退火参数），δ 是容差宽度。<br><br>
+    <strong>退火调度：</strong><br>
+    &nbsp;&nbsp;第 t 次迭代：τ<sub>t</sub> = τ<sub>max</sub> - (τ<sub>max</sub> - τ<sub>min</sub>) × (t / T<sub>total</sub>)<br>
+    &nbsp;&nbsp;从 τ<sub>max</sub>（宽松，如基线参数的 100%）退火到 τ<sub>min</sub>（严格，如基线参数的 40%）<br><br>
+    <strong>最终奖励：</strong><br>
+    &nbsp;&nbsp;R(arch; t) = (-NMSE<sub>avg</sub>) × F<sub>2</sub>(Params(arch); τ<sub>t</sub>, δ)
+  </div>
+
+  <div class="box-green highlight-box">
+    <h4>✅ 优势</h4>
+    <ul>
+      <li>单次搜索即可获得完整 Pareto 前沿（vs. MnasNet 需要多次运行）</li>
+      <li>策略平滑适应资源约束变化，避免过早收敛到局部最优</li>
+      <li>NPG-NAS 在 CIFAR-10/100 → ImageNet 上验证，仅需 ~7 GPU-day 即可完成全前沿搜索</li>
+    </ul>
+  </div>
+
+  <h3>1.4 方案三：Pareto 支配信用（ADC, NPG-NAS 风格）</h3>
+  <p><strong>来源：</strong>同上（NPG-NAS 的第二组件）</p>
+  <p><strong>核心思想：</strong>维护一个动态 Pareto 前沿存档；新采样的架构若支配存档中的某些解，则获得正奖励；若被支配则获得负奖励。这直接优化 Pareto 支配关系，而非依赖加权标量公式。</p>
+
+  <div class="formula-box">
+    <strong>Pareto 支配判定：</strong><br>
+    架构 A 支配架构 B（A ≻ B） ⇔<br>
+    &nbsp;&nbsp;(-NMSE)<sub>A</sub> ≥ (-NMSE)<sub>B</sub> &nbsp;且&nbsp; Params<sub>A</sub> ≤ Params<sub>B</sub><br>
+    &nbsp;&nbsp;且至少一个不等式严格成立。<br><br>
+    <strong>信用分配：</strong><br>
+    &nbsp;&nbsp;若 A 支配 m 个存档解 → 正奖励 +α × m<br>
+    &nbsp;&nbsp;若 A 被 n 个存档解支配 → 负奖励 -β × n<br>
+    &nbsp;&nbsp;额外加入密度惩罚，避免前沿上某区域过于拥挤
+  </div>
+
+  <div class="box-green highlight-box">
+    <h4>✅ 优势</h4>
+    <ul>
+      <li>不依赖加权标量，能到达非凸 Pareto 前沿上的<strong>所有解</strong></li>
+      <li>自动维护解的多样性（通过密度惩罚）</li>
+      <li>NPG-NAS 中 ADF + ADC 联合使用效果最佳</li>
+    </ul>
+  </div>
+
+  <h3>1.5 方案四：多层级奖励分解</h3>
+  <p>为缓解延迟奖励（sparse reward）问题，可将单一的整体奖励分解为多个中间信号：</p>
+
+  <table>
+    <tr><th>层级</th><th>奖励信号</th><th>时机</th></tr>
+    <tr>
+      <td><strong>架构级</strong></td>
+      <td>基于零成本代理（如 activation rank、SNIP）的即时评分</td>
+      <td>架构生成后立即获得（无需训练）</td>
+    </tr>
+    <tr>
+      <td><strong>短训练级</strong></td>
+      <td>300-epoch 快速训练的性能估计</td>
+      <td>架构生成后 ~6 分钟</td>
+    </tr>
+    <tr>
+      <td><strong>完整训练级</strong></td>
+      <td>1000-epoch 完整训练 + 多 case 验证</td>
+      <td>仅对进入 Pareto 前沿的候选架构触发</td>
+    </tr>
+  </table>
+
+  <h3>1.6 奖励函数方案对比总结</h3>
+  <table class="comparison-table">
+    <tr><th>方案</th><th>Pareto 覆盖</th><th>实现复杂度</th><th>超参敏感度</th><th>推荐场景</th></tr>
+    <tr>
+      <td>加权乘积（MnasNet）</td>
+      <td>单点</td>
+      <td>⭐ 低</td>
+      <td>高（w 需仔细调节）</td>
+      <td>快速原型验证、基线对比</td>
+    </tr>
+    <tr>
+      <td>退火期望函数 ADF</td>
+      <td>全前沿</td>
+      <td>⭐⭐ 中</td>
+      <td>中（τ 范围需设定）</td>
+      <td><strong>主要搜索运行</strong></td>
+    </tr>
+    <tr>
+      <td>Pareto 支配信用 ADC</td>
+      <td>全前沿</td>
+      <td>⭐⭐⭐ 高</td>
+      <td>中（密度惩罚系数）</td>
+      <td>与 ADF 联合使用</td>
+    </tr>
+    <tr>
+      <td>多层级分解</td>
+      <td>全前沿</td>
+      <td>⭐⭐ 中</td>
+      <td>低</td>
+      <td>计算预算充足时的精细搜索</td>
+    </tr>
+  </table>
+
+  <div class="box-blue highlight-box">
+    <h4>🎯 最终推荐</h4>
+    <p><strong>主方案：ADF + ADC 联合（NPG-NAS 路线）</strong>，先在宽松资源约束下找到高性能区域，再逐步收紧资源约束，在单次搜索中覆盖完整 Pareto 前沿。</p>
+    <p><strong>备用方案：加权乘积（MnasNet 路线）</strong>，如果 ADF 调参困难，回退到简单的两目标加权乘积 + 多次不同权重运行。</p>
+    <p><strong>性能指标选择：</strong>NMSE 为主指标（连续、稳定），EVM 和 ACLR 作为辅助约束（超过门限施加惩罚）。</p>
+  </div>
+</div>
+
+<!-- ==================== Part 2: 搜索时间解决方案 ==================== -->
+<div class="section">
+  <h2>第二部分：搜索时间过长的解决方案</h2>
+
+  <h3>2.1 问题量化</h3>
+  <table>
+    <tr><th>参数</th><th>数值</th></tr>
+    <tr><td>单 case 完整训练（1000 epochs）</td><td>≈ 20 分钟</td></tr>
+    <tr><td>单 case 短训练（300 epochs）</td><td>≈ 6 分钟</td></tr>
+    <tr><td>每次评估使用 K 个 case</td><td>K = 3~5</td></tr>
+    <tr><td>单次完整评估（K=3，1000 epoch）</td><td>≈ 1 小时</td></tr>
+    <tr><td>单次短评估（K=3，300 epoch）</td><td>≈ 18 分钟</td></tr>
+    <tr><td>PPO 搜索需要的架构评估次数</td><td>约 200~500 次</td></tr>
+    <tr><td><strong>完整评估搜索总时间</strong></td><td><strong>≈ 200~500 小时（8~21 天）</strong></td></tr>
+    <tr><td><strong>短评估搜索总时间</strong></td><td><strong>≈ 60~150 小时（2.5~6 天）</strong></td></tr>
+  </table>
+  <p style="color:#c53030; margin-top:10px;">即使是短训练方案，2.5~6 天的搜索时间仍然很长。需要进一步加速。</p>
+
+  <h3>2.2 解决方案一：短训练代理 + 渐进淘汰（RANK-NOSH 路线）<span class="rec-badge">首选</span></h3>
+  <p><strong>来源：</strong>Wang et al., "RANK-NOSH: Efficient Predictor-Based Architecture Search via Non-Uniform Successive Halving", ICCV 2021</p>
+
+  <h4>核心机制：非均匀连续折半（Non-uniform Successive Halving, NOSH）</h4>
+  <div class="formula-box">
+    <strong>多级淘汰调度示例：</strong><br>
+    阶段 1：对所有 N 个候选 → 训练 50 epochs → 按性能排序 → <strong>淘汰后 50%</strong><br>
+    阶段 2：对剩余 N/2 个候选 → 训练 100 epochs → 按性能排序 → <strong>淘汰后 50%</strong><br>
+    阶段 3：对剩余 N/4 个候选 → 训练 200 epochs → 按性能排序 → <strong>淘汰后 50%</strong><br>
+    阶段 4：对剩余 N/8 个候选 → <strong>完整训练</strong> 1000 epochs → 选出最优<br><br>
+    <strong>时间节省：</strong><br>
+    相比所有候选都完整训练（N × 1000 epochs），NOSH 的总训练 epoch 数减少 <strong>约 60~70%</strong>。
+  </div>
+
+  <div class="box-green highlight-box">
+    <h4>✅ 为什么这比简单统一缩短到 300 epochs 更好？</h4>
+    <ul>
+      <li>简单缩短到 300 epoch 对所有候选一视同仁，可能淘汰在早期表现一般但后期潜力大的架构</li>
+      <li>NOSH 给表现好的架构更多训练预算来"证明"自己，差的快速淘汰</li>
+      <li>RANK-NOSH 在 NAS-Bench-201 上以 <strong>15% 的搜索预算</strong>达到接近完整搜索的排名相关性（91.56% vs 91.60%）</li>
+    </ul>
+  </div>
+
+  <h3>2.3 解决方案二：权重共享超网（ENAS 路线）</h3>
+  <p><strong>来源：</strong>Pham et al., "Efficient Neural Architecture Search via Parameter Sharing", ICML 2018</p>
+
+  <h4>核心思想</h4>
+  <p>将所有候选架构嵌入一个<strong>过参数化的超网（SuperNet）</strong>中。每个候选架构是超网的一个子图，所有子图<strong>共享权重</strong>。评估候选架构时，直接从超网中提取对应子图的权重进行推理，<strong>无需独立训练</strong>。</p>
+
+  <table>
+    <tr><th>步骤</th><th>操作</th></tr>
+    <tr><td>1. 构建超网</td><td>为每层包含所有可能的操作选择（如各种卷积核大小、卷积类型），构成一个大的计算图</td></tr>
+    <tr><td>2. 训练超网</td><td>在多个 case 上训练超网至收敛（一次性开销，约数小时）</td></tr>
+    <tr><td>3. 采样评估</td><td>从超网中采样子架构，直接使用共享权重评估性能（无需额外训练）</td></tr>
+    <tr><td>4. PPO 搜索</td><td>使用采样评估结果作为奖励信号，驱动 PPO 搜索</td></tr>
+    <tr><td>5. 最终验证</td><td>对搜索到的最优架构从头训练，获得真实性能</td></tr>
+  </table>
+
+  <div class="box-yellow highlight-box">
+    <h4>⚠️ 关键风险：优化差距（Optimization Gap）</h4>
+    <p>共享权重下评估的架构排名可能与独立训练的真实排名存在偏差。Xie et al. (ACM Computing Surveys, 2021) 指出这是权重共享 NAS 的<strong>核心挑战</strong>。</p>
+    <p><strong>缓解措施：</strong></p>
+    <ul>
+      <li>超网训练时加入 FairNAS 的公平采样策略，确保每个操作被均匀训练</li>
+      <li>搜索结束后对 Top-K 架构进行独立训练的"校准"步骤</li>
+      <li>结合用户提出的"逐层复用不变层权重"思路 —— 这本质上是超网共享的一种"增量"变体</li>
+    </ul>
+  </div>
+
+  <h3>2.4 解决方案三：零成本代理预筛选（Zero-Cost Proxy）</h3>
+  <p><strong>来源：</strong>NEAR (2024), TSE (NeurIPS 2021), PATNAS (2024)</p>
+
+  <h4>核心思想</h4>
+  <p>在<strong>完全不训练</strong>的情况下，通过分析网络在随机初始化状态下的某些统计特性来预测其最终性能。以此作为"预筛选"工具，在进入昂贵训练评估前过滤掉明显劣质的架构。</p>
+
+  <table>
+    <tr><th>代理指标</th><th>原理</th><th>计算时间</th></tr>
+    <tr>
+      <td><strong>Activation Rank (NEAR, 2024)</strong></td>
+      <td>计算前激活和激活后矩阵的有效秩，高有效秩暗示更强的表达能力</td>
+      <td>秒级</td>
+    </tr>
+    <tr>
+      <td><strong>SNIP</strong></td>
+      <td>基于连接敏感度的评分：|梯度 × 权重| 在单个 mini-batch 上的求和</td>
+      <td>秒级</td>
+    </tr>
+    <tr>
+      <td><strong>SynFlow</strong></td>
+      <td>数据无关的信号传播分析，评估网络避免梯度消失/爆炸的能力</td>
+      <td>秒级</td>
+    </tr>
+    <tr>
+      <td><strong>TSE-EMA (NeurIPS 2021)</strong></td>
+      <td>用近期训练 loss 的指数移动平均作为性能预测器，只需几个 epoch</td>
+      <td>分钟级</td>
+    </tr>
+  </table>
+
+  <div class="box-green highlight-box">
+    <h4>✅ 在本项目中的应用建议</h4>
+    <p>零成本代理用于<strong>搜索空间粗筛</strong>：在 PPO 每轮采样后，先用 SNIP 或 Activation Rank 快速打分，只对得分前 50% 的候选架构进入 300-epoch 短训练评估。这相当于在方案一的基础上再加一层"免费"的过滤器。</p>
+  </div>
+
+  <h3>2.5 三种加速方案的组合策略</h3>
+  <div class="card-grid">
+    <div class="card">
+      <h4>🔹 第 0 层：零成本代理预筛</h4>
+      <p>PPO 每轮采样 20 个架构 → SNIP 快速打分 → 保留前 10 个</p>
+      <p style="color:#38a169; font-weight:600;">时间：秒级 / 几乎免费</p>
+    </div>
+    <div class="card">
+      <h4>🔹 第 1 层：NOSH 渐进淘汰</h4>
+      <p>10 个候选 → 50 epoch 淘汰 5 个 → 150 epoch 淘汰 3 个 → 保留 2 个进入完整训练</p>
+      <p style="color:#38a169; font-weight:600;">时间节省：~50%</p>
+    </div>
+    <div class="card">
+      <h4>🔹 第 2 层：逐层权重复用</h4>
+      <p>对于架构中未改变的层，直接复用上一轮训练的权重，只训练新增/变更的层</p>
+      <p style="color:#38a169; font-weight:600;">时间节省：~20~30%</p>
+    </div>
+    <div class="card">
+      <h4>🔹 第 3 层：多 Case 并行</h4>
+      <p>K 个 case 的训练并行执行（多 GPU 或数据并行），单次评估时间从 K×20 分钟降为约 20 分钟</p>
+      <p style="color:#38a169; font-weight:600;">时间节省：~K 倍</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== Part 3: 文献支撑 ==================== -->
+<div class="section">
+  <h2>第三部分：关键文献支撑</h2>
+
+  <h3>3.1 核心文献速览</h3>
+  <table>
+    <tr><th>论文</th><th>年份/出处</th><th>与本项目的关联</th></tr>
+    <tr>
+      <td><strong>NPG-NAS</strong>: Multi-objective NAS via Non-stationary Policy Gradient</td>
+      <td>Chen et al., 2020<br>arXiv:2001.08437</td>
+      <td><span class="tag tag-green">奖励函数</span> ADF + ADC 的原始来源；单次运行覆盖全 Pareto 前沿</td>
+    </tr>
+    <tr>
+      <td><strong>MnasNet</strong>: Platform-Aware NAS for Mobile</td>
+      <td>Tan et al., CVPR 2019</td>
+      <td><span class="tag tag-green">奖励函数</span> 加权乘积奖励的经典范式</td>
+    </tr>
+    <tr>
+      <td><strong>TabNAS</strong>: Rejection-Based Reward for Tabular NAS</td>
+      <td>2022<br>arXiv:2204.07615</td>
+      <td><span class="tag tag-green">奖励函数</span> 揭示资源感知奖励的偏差问题；拒绝采样替代方案</td>
+    </tr>
+    <tr>
+      <td><strong>ENAS</strong>: Efficient NAS via Parameter Sharing</td>
+      <td>Pham et al., ICML 2018</td>
+      <td><span class="tag tag-yellow">搜索加速</span> 权重共享超网的奠基之作</td>
+    </tr>
+    <tr>
+      <td><strong>RANK-NOSH</strong>: Efficient Predictor-Based NAS via Non-Uniform Successive Halving</td>
+      <td>Wang et al., ICCV 2021</td>
+      <td><span class="tag tag-yellow">搜索加速</span> 渐进淘汰的多级训练预算分配</td>
+    </tr>
+    <tr>
+      <td><strong>TSE / TSE-EMA</strong>: Training Speed Estimation</td>
+      <td>NeurIPS 2021</td>
+      <td><span class="tag tag-yellow">搜索加速</span> 训练 loss 轨迹作为早期性能预测器</td>
+    </tr>
+    <tr>
+      <td><strong>NEAR</strong>: Network Expressivity by Activation Rank</td>
+      <td>2024<br>arXiv:2408.08776</td>
+      <td><span class="tag tag-purple">零成本代理</span> 激活值有效秩作为无需训练的性能预测器</td>
+    </tr>
+    <tr>
+      <td><strong>MARCO</strong>: Hardware-Aware NAS with Multi-Agent RL and Conformal Prediction</td>
+      <td>Fayyazi et al., 2024<br>arXiv:2506.13755</td>
+      <td><span class="tag tag-blue">整体框架</span> PPO + NAS + 量化的联合搜索，与本项目最接近的工作</td>
+    </tr>
+    <tr>
+      <td><strong>APQ</strong>: Joint Search for Network Architecture, Pruning and Quantization</td>
+      <td>Wang et al., CVPR 2020</td>
+      <td><span class="tag tag-blue">整体框架</span> NAS+剪枝+量化的联合优化，含量化感知精度预测器</td>
+    </tr>
+    <tr>
+      <td><strong>Advances in Neural Architecture Search</strong></td>
+      <td>National Science Review, 2024</td>
+      <td><span class="tag tag-blue">综述</span> 2024 年 NAS 全貌综述，覆盖搜索空间、策略、评估方法</td>
+    </tr>
+  </table>
+
+  <h3>3.2 文献关键发现总结</h3>
+  <div class="box-blue highlight-box">
+    <ol>
+      <li><strong>加权标量奖励有根本性局限</strong>（TabNAS 2022）：在资源约束搜索空间中，MnasNet 风格奖励函数仅有 &lt;1% 成功找到最优架构。推荐使用 NPG-NAS 的非平稳策略梯度（ADF + ADC）。</li>
+      <li><strong>短训练排名相关性在 10-12 epochs 即达 0.6+</strong>（TSE 2021, RANK-NOSH 2021）：300 epochs 足以提供可靠的相对排序，远高于"安全线"。</li>
+      <li><strong>零成本代理日趋成熟</strong>（NEAR 2024, PATNAS 2024）：Activation Rank 等指标在完全不训练的情况下即可提供有意义的性能预测，适合粗筛。</li>
+      <li><strong>PPO 用于 NAS + 量化联合搜索已有验证</strong>（MARCO 2024）：为本项目的两阶段方案（软参 + 量化）提供了直接的可行性支撑。</li>
+      <li><strong>权重共享是最高效但最具风险的加速手段</strong>：ENAS 提供 1000× 加速，但"优化差距"问题需要额外的校准步骤（FairNAS, 2021）来缓解。</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ==================== Part 4: 综合建议 ==================== -->
+<div class="section">
+  <h2>第四部分：综合实施建议</h2>
+
+  <h3>4.1 推荐技术路线图</h3>
+  <table>
+    <tr><th>阶段</th><th>做什么</th><th>验证指标</th></tr>
+    <tr>
+      <td><strong>Step 0：验证短训练代理</strong></td>
+      <td>随机采样 30~50 个架构，分别进行 300-epoch 和 1000-epoch 训练，计算 Spearman 排名相关性</td>
+      <td>ρ ≥ 0.7 即可使用 300-epoch 代理</td>
+    </tr>
+    <tr>
+      <td><strong>Step 1：验证零成本代理</strong></td>
+      <td>在相同 30~50 个架构上计算 SNIP / Activation Rank，与完整训练性能计算相关性</td>
+      <td>ρ ≥ 0.4 即可用于粗筛</td>
+    </tr>
+    <tr>
+      <td><strong>Step 2：PPO 框架搭建</strong></td>
+      <td>实现 LSTM 控制器 + ADF 奖励函数 + 300-epoch 短训练评估 + NOSH 淘汰</td>
+      <td>策略收敛曲线、搜索到架构的性能分布</td>
+    </tr>
+    <tr>
+      <td><strong>Step 3：正式搜索运行</strong></td>
+      <td>运行 PPO-NAS，目标 200~300 次有效评估，Pareto 前沿分析</td>
+      <td>前沿上选 3~5 点 vs 基线对比</td>
+    </tr>
+    <tr>
+      <td><strong>Step 4：第二阶段探索</strong></td>
+      <td>在选定架构上，PPO 搜索逐层量化位宽</td>
+      <td>存储 vs 性能的 Pareto 前沿</td>
+    </tr>
+  </table>
+
+  <h3>4.2 关键超参数建议</h3>
+  <table>
+    <tr><th>超参数</th><th>建议值</th><th>说明</th></tr>
+    <tr><td>PPO clip ε</td><td>0.2</td><td>标准值，控制策略更新幅度</td></tr>
+    <tr><td>每轮采样数</td><td>8~16 个架构</td><td>平衡样本多样性与评估时间</td></tr>
+    <tr><td>ADF 退火范围 τ</td><td>[基线Params×40%, 基线Params×100%]</td><td>从宽松到严格</td></tr>
+    <tr><td>NOSH 淘汰比例</td><td>每阶段淘汰 50%</td><td>3 阶段：50→150→1000 epochs</td></tr>
+    <tr><td>短训练 epoch 数</td><td>300（主线）/ 50、150（NOSH 中间阶段）</td><td>300 作为最终代理，50/150 用于快速淘汰</td></tr>
+    <tr><td>多 case 评估数 K</td><td>3</td><td>平衡泛化性与时间</td></tr>
+  </table>
+
+  <h3>4.3 风险与缓解</h3>
+  <table>
+    <tr><th>风险</th><th>概率</th><th>缓解措施</th></tr>
+    <tr>
+      <td>300-epoch 排名与 1000-epoch 排名相关性不足</td>
+      <td>中</td>
+      <td>Step 0 先验证；若不达标，提升至 500 epoch 或使用 TSE-EMA 作为补充信号</td>
+    </tr>
+    <tr>
+      <td>ADF 退火参数难以调优</td>
+      <td>中</td>
+      <td>准备回退方案：简单加权乘积 + 多次不同权重运行</td>
+    </tr>
+    <tr>
+      <td>搜索空间过大导致不收敛</td>
+      <td>低</td>
+      <td>先用离散化缩小空间（如核大小从 {3,5,7,9,11} 缩减为 {3,7,11}）</td>
+    </tr>
+    <tr>
+      <td>权重复用导致次优收敛</td>
+      <td>中</td>
+      <td>对 Top-K 候选始终进行从头训练的"去偏"评估</td>
+    </tr>
+  </table>
+</div>
+
+<!-- ==================== 参考文献 ==================== -->
+<div class="section">
+  <h2>参考文献</h2>
+  <div class="ref-item">
+    <strong>[1] Chen et al. (2020).</strong> "Multi-objective Neural Architecture Search via Non-stationary Policy Gradient." <em>arXiv:2001.08437</em>.<br>
+    <span style="color:#718096;">— ADF + ADC 奖励函数设计的核心文献。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[2] Tan et al. (2019).</strong> "MnasNet: Platform-Aware Neural Architecture Search for Mobile." <em>CVPR 2019</em>.<br>
+    <span style="color:#718096;">— 加权乘积多目标奖励的标杆工作。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[3] Pham et al. (2018).</strong> "Efficient Neural Architecture Search via Parameter Sharing." <em>ICML 2018</em>.<br>
+    <span style="color:#718096;">— ENAS：权重共享超网的奠基之作，1000× 搜索加速。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[4] Wang et al. (2021).</strong> "RANK-NOSH: Efficient Predictor-Based Architecture Search via Non-Uniform Successive Halving." <em>ICCV 2021</em>.<br>
+    <span style="color:#718096;">— 渐进淘汰的多级训练预算分配策略。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[5] NeurIPS 2021.</strong> "Training Speed Estimation for Neural Architecture Search." <em>NeurIPS 2021</em>.<br>
+    <span style="color:#718096;">— TSE/TSE-EMA：基于训练 loss 轨迹的早期性能预测器。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[6] Husistein et al. (2024).</strong> "NEAR: A Training-Free Pre-Estimator of Machine Learning Model Performance." <em>arXiv:2408.08776</em>.<br>
+    <span style="color:#718096;">— Activation Rank 作为零成本代理的性能预测。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[7] Fayyazi et al. (2024).</strong> "MARCO: Hardware-Aware NAS for Edge Devices with Multi-Agent RL and Conformal Prediction." <em>arXiv:2506.13755</em>.<br>
+    <span style="color:#718096;">— PPO + NAS + 量化的联合搜索，与本项目最接近的工作。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[8] Wang et al. (2020).</strong> "APQ: Joint Search for Network Architecture, Pruning and Quantization Policy." <em>CVPR 2020</em>.<br>
+    <span style="color:#718096;">— NAS + 剪枝 + 量化的端到端联合优化框架。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[9] TabNAS (2022).</strong> "TabNAS: Rejection-Based Reward for Tabular Neural Architecture Search." <em>arXiv:2204.07615</em>.<br>
+    <span style="color:#718096;">— 揭示资源感知奖励偏差，提出拒绝采样替代方案。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[10] National Science Review (2024).</strong> "Advances in Neural Architecture Search." <em>National Science Review, 2024</em>.<br>
+    <span style="color:#718096;">— 2024 年 NAS 领域综述，覆盖搜索空间、搜索策略与评估方法。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[11] IEEE TAI (2024).</strong> "Efficient Evaluation Methods for Neural Architecture Search: A Survey." <em>IEEE Transactions on Artificial Intelligence, 2024</em>.<br>
+    <span style="color:#718096;">— NAS 高效评估方法综述，系统分类权重共享、性能预测等方法。</span>
+  </div>
+  <div class="ref-item">
+    <strong>[12] EMNAS-RL (2025).</strong> "Robust Evolutionary Multi-Objective Network Architecture Search for Reinforcement Learning." <em>ESANN 2025 / arXiv:2506.08533</em>.<br>
+    <span style="color:#718096;">— 进化多目标 NAS 用于 RL 任务，教师-学生跨代迁移。</span>
+  </div>
+</div>
+
+<div class="footer">
+  <p>奖励函数设计方案与困难解决方案 · 文献调研报告 · 2026年6月 · Version 1.0</p>
+</div>
+
+</div>
+</body>
+</html>

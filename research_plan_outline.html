@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>基于PPO的NAS研究方案与提纲</title>
+<style>
+  :root {
+    --primary: #1a365d;
+    --secondary: #2b6cb0;
+    --accent: #e53e3e;
+    --bg: #f7fafc;
+    --card-bg: #ffffff;
+    --text: #2d3748;
+    --text-light: #4a5568;
+    --border: #e2e8f0;
+    --success: #38a169;
+    --warning: #d69e2e;
+    --info: #3182ce;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.8;
+    padding: 0;
+  }
+  .container { max-width: 1100px; margin: 0 auto; padding: 20px; }
+
+  /* Header */
+  .header {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: white;
+    padding: 60px 20px;
+    text-align: center;
+    border-radius: 0 0 20px 20px;
+    margin-bottom: 40px;
+  }
+  .header h1 { font-size: 2.2em; margin-bottom: 10px; }
+  .header .subtitle { font-size: 1.1em; opacity: 0.85; }
+
+  /* Section */
+  .section {
+    background: var(--card-bg);
+    border-radius: 12px;
+    padding: 35px 40px;
+    margin-bottom: 30px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    border-left: 4px solid var(--secondary);
+  }
+  .section h2 {
+    color: var(--primary);
+    font-size: 1.5em;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--border);
+  }
+  .section h3 {
+    color: var(--secondary);
+    font-size: 1.15em;
+    margin: 20px 0 10px;
+  }
+  .section h4 {
+    color: var(--text);
+    font-size: 1.05em;
+    margin: 15px 0 8px;
+  }
+
+  /* Model Diagram */
+  .model-diagram {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 25px;
+    background: #edf2f7;
+    border-radius: 10px;
+    margin: 20px 0;
+    font-family: "Consolas", "Courier New", monospace;
+  }
+  .layer-block {
+    padding: 15px 22px;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 0.9em;
+    min-width: 100px;
+  }
+  .layer-linear { background: #bee3f8; color: #1a365d; border: 2px solid #3182ce; }
+  .layer-lut { background: #fefcbf; color: #744210; border: 2px solid #d69e2e; }
+  .layer-arrow { font-size: 1.5em; color: #a0aec0; }
+
+  /* Table */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 15px 0;
+    font-size: 0.95em;
+  }
+  th {
+    background: var(--primary);
+    color: white;
+    padding: 12px 15px;
+    text-align: left;
+    font-weight: 600;
+  }
+  td {
+    padding: 10px 15px;
+    border-bottom: 1px solid var(--border);
+  }
+  tr:nth-child(even) td { background: #f7fafc; }
+  tr:hover td { background: #ebf8ff; }
+
+  /* Tags */
+  .tag {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.82em;
+    font-weight: 600;
+    margin: 2px;
+  }
+  .tag-blue { background: #bee3f8; color: #1a365d; }
+  .tag-green { background: #c6f6d5; color: #22543d; }
+  .tag-red { background: #fed7d7; color: #742a2a; }
+  .tag-yellow { background: #fefcbf; color: #744210; }
+
+  /* Lists */
+  ul, ol { margin: 10px 0 10px 25px; }
+  li { margin: 6px 0; }
+
+  /* Difficulty box */
+  .difficulty-box {
+    background: #fff5f5;
+    border: 2px solid #fc8181;
+    border-radius: 10px;
+    padding: 20px 25px;
+    margin: 15px 0;
+  }
+  .difficulty-box h4 { color: #c53030; margin-bottom: 8px; }
+  .solution-box {
+    background: #f0fff4;
+    border: 2px solid #68d391;
+    border-radius: 10px;
+    padding: 20px 25px;
+    margin: 15px 0;
+  }
+  .solution-box h4 { color: #276749; margin-bottom: 8px; }
+
+  /* Stage badge */
+  .stage-badge {
+    display: inline-block;
+    padding: 6px 16px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 0.9em;
+  }
+  .stage-1 { background: #ebf8ff; color: #2b6cb0; border: 2px solid #3182ce; }
+  .stage-2 { background: #faf5ff; color: #6b46c1; border: 2px solid #805ad5; }
+
+  .footer { text-align: center; padding: 30px; color: #a0aec0; font-size: 0.9em; }
+
+  code {
+    background: #edf2f7;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 0.9em;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🔬 基于PPO的神经架构搜索（NAS）研究方案</h1>
+  <p class="subtitle">面向数字预失真（DPD）七层混合模型的软参搜索与量化位宽分配</p>
+  <p class="subtitle" style="margin-top:5px; font-size:0.9em;">汇报日期：2026年6月1日</p>
+</div>
+
+<div class="container">
+
+<!-- ==================== 1. 研究背景与动机 ==================== -->
+<div class="section">
+  <h2>一、研究背景与动机</h2>
+  <p>
+    当前已设计完成一个<strong>七层混合结构基线模型</strong>用于数字预失真（DPD）任务。该模型结合了线性卷积层与LUT（Look-Up Table）非线性层。在实际部署中，模型的<strong>参数量、计算资源和存储资源</strong>均受到严格约束，因此需要在保证性能的前提下，自动搜索最优的架构超参数配置。
+  </p>
+  <p style="margin-top:10px;">
+    本研究拟采用<strong>PPO（Proximal Policy Optimization）强化学习算法</strong>作为NAS的搜索策略，分两个阶段分别解决"软参搜索"和"量化位宽分配"两个核心问题。
+  </p>
+</div>
+
+<!-- ==================== 2. 基线模型结构 ==================== -->
+<div class="section">
+  <h2>二、基线模型结构</h2>
+  <div class="model-diagram">
+    <div class="layer-block layer-linear">Layer 1<br>线性层<br><small>（输入）</small></div>
+    <div class="layer-arrow">→</div>
+    <div class="layer-block layer-linear">Layer 2<br>线性层</div>
+    <div class="layer-arrow">→</div>
+    <div class="layer-block layer-linear">Layer 3<br>线性层</div>
+    <div class="layer-arrow">→</div>
+    <div class="layer-block layer-lut">Layer 4<br>LUT 非线性层<br><small>⭐⭐⭐ 核心</small></div>
+    <div class="layer-arrow">→</div>
+    <div class="layer-block layer-linear">Layer 5<br>线性层<br><small>（对称结构）</small></div>
+    <div class="layer-arrow">→</div>
+    <div class="layer-block layer-linear">Layer 6<br>线性层<br><small>（对称结构）</small></div>
+    <div class="layer-arrow">→</div>
+    <div class="layer-block layer-linear">Layer 7<br>线性层<br><small>（输出）</small></div>
+  </div>
+  <p style="text-align:center; color:#718096; font-size:0.9em; margin-top:8px;">图1：七层混合模型架构示意（前3层线性 → LUT非线性 → 后3层对称线性）</p>
+
+  <h3>模型结构说明</h3>
+  <table>
+    <tr><th>层编号</th><th>类型</th><th>说明</th></tr>
+    <tr><td>Layer 1–3</td><td><span class="tag tag-blue">线性层</span></td><td>前馈线性卷积层，作为特征提取前端</td></tr>
+    <tr><td>Layer 4</td><td><span class="tag tag-yellow">LUT 非线性层</span></td><td>查找表非线性激活层，是模型的核心非线性表达单元，使用样条插值</td></tr>
+    <tr><td>Layer 5–7</td><td><span class="tag tag-blue">线性层（对称结构）</span></td><td>与前3层结构对称，包含分组卷积和 1×1 通道全连接卷积</td></tr>
+  </table>
+
+  <h3>关键术语约定</h3>
+  <ul>
+    <li><strong>线性层</strong>：包含分组卷积（Grouped Convolution）和 1×1 通道全连接卷积两种可选结构</li>
+    <li><strong>LUT 非线性层</strong>：基于查找表 + 样条插值实现非线性映射</li>
+    <li><strong>分组卷积</strong>：将通道分组后在各组内独立卷积，减少参数量</li>
+    <li><strong>1×1 通道全连接卷积</strong>：用 1×1 卷积核实现通道间的全连接混合</li>
+  </ul>
+</div>
+
+<!-- ==================== 3. 搜索空间定义 ==================== -->
+<div class="section">
+  <h2>三、搜索空间定义</h2>
+
+  <h3><span class="stage-badge stage-1">第一阶段</span> 软参搜索空间</h3>
+  <p>目标：在保证模型性能的前提下，尽可能降低资源量（参数量、计算量），寻找性能与资源的 Pareto 最优。</p>
+
+  <table>
+    <tr><th>搜索维度</th><th>适用层</th><th>候选值 / 范围</th><th>说明</th></tr>
+    <tr>
+      <td><strong>卷积核大小</strong></td>
+      <td>线性层（L1–L3, L5–L7）</td>
+      <td>如 {3, 5, 7, 9, 11}</td>
+      <td>更大的核捕获更长的时域依赖，但增加计算量</td>
+    </tr>
+    <tr>
+      <td><strong>卷积类型</strong></td>
+      <td>线性层（L1–L3, L5–L7）</td>
+      <td>{分组卷积, 1×1 通道全连接卷积}</td>
+      <td>分组卷积参数少；1×1全连接表达能力强</td>
+    </tr>
+    <tr>
+      <td><strong>样条个数</strong></td>
+      <td>LUT 非线性层（L4）</td>
+      <td>如 {4, 8, 16, 32, 64}</td>
+      <td>样条数决定非线性拟合能力与存储开销的权衡</td>
+    </tr>
+    <tr>
+      <td><strong>初始化策略</strong></td>
+      <td>所有层</td>
+      <td>卷积层：{中心抽头=1/其余=0, Xavier, Kaiming}<br>LUT层：{1e-4 小值初始化, 线性初始化}</td>
+      <td>初始化影响收敛速度和最终性能</td>
+    </tr>
+    <tr>
+      <td><strong>归一化策略</strong></td>
+      <td>数据预处理</td>
+      <td>{除以 2^15 固定位宽归一化, 其他归一化方案}</td>
+      <td>输入数据和 label 数据的归一化方式影响训练稳定性</td>
+    </tr>
+  </table>
+
+  <h3><span class="stage-badge stage-2">第二阶段</span> 量化位宽分配</h3>
+  <p>目标：在软参搜索确定的架构基础上，进一步搜索每层的最优量化位宽，降低存储资源需求。此阶段暂不需要细化，先建立框架。</p>
+
+  <table>
+    <tr><th>搜索维度</th><th>适用层</th><th>候选值</th><th>说明</th></tr>
+    <tr><td><strong>权重位宽</strong></td><td>所有层</td><td>如 {4bit, 6bit, 8bit, 16bit}</td><td>逐层独立搜索，关键层用高位宽，非关键层用低位宽</td></tr>
+    <tr><td><strong>激活值位宽</strong></td><td>所有层</td><td>如 {8bit, 16bit}</td><td>与权重位宽联合搜索</td></tr>
+    <tr><td><strong>LUT 表项位宽</strong></td><td>LUT 非线性层</td><td>如 {8bit, 12bit, 16bit}</td><td>LUT 层特有的存储优化维度</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 4. PPO搜索框架 ==================== -->
+<div class="section">
+  <h2>四、PPO 搜索框架设计</h2>
+
+  <h3>4.1 为什么选择 PPO</h3>
+  <ul>
+    <li><strong>稳定性好</strong>：PPO 通过 clip 机制限制策略更新幅度，避免策略崩溃，这对搜索空间离散且评估代价高的 NAS 场景至关重要</li>
+    <li><strong>样本效率较高</strong>：相比 REINFORCE，PPO 支持多轮小批量更新，能更充分利用每次采样的架构评估结果</li>
+    <li><strong>易于处理多目标</strong>：可以灵活地将多目标奖励信号融入策略梯度更新</li>
+    <li><strong>文献支持</strong>：MARCO（2024）等工作已验证 PPO 在 NAS + 量化联合搜索中的有效性</li>
+  </ul>
+
+  <h3>4.2 MDP 建模</h3>
+  <table>
+    <tr><th>MDP 要素</th><th>定义</th></tr>
+    <tr>
+      <td><strong>状态 s_t</strong></td>
+      <td>当前已生成的架构部分（已决策层数、各层超参数），可用 RNN/LSTM 编码</td>
+    </tr>
+    <tr>
+      <td><strong>动作 a_t</strong></td>
+      <td>为当前层选择超参数：卷积核大小、卷积类型、样条数、初始化策略、归一化策略（第一阶段）；各层量化位宽（第二阶段）</td>
+    </tr>
+    <tr>
+      <td><strong>策略 π_θ(a_t|s_t)</strong></td>
+      <td>由控制器 RNN/LSTM 输出动作概率分布，逐层自回归生成完整架构（Actor 网络）</td>
+    </tr>
+    <tr>
+      <td><strong>价值 V_φ(s_t)</strong></td>
+      <td>由 Critic 网络估计状态 s_t 的期望回报，用于计算优势函数 A_t = G_t − V(s_t)，减小策略梯度方差</td>
+    </tr>
+    <tr>
+      <td><strong>奖励 R</strong></td>
+      <td>在完整架构生成后一次性给出（延迟奖励），基于验证集性能和资源指标的加权组合</td>
+    </tr>
+  </table>
+
+  <h3>4.3 控制器（Actor）架构</h3>
+  <p>建议采用 <strong>LSTM 控制器</strong>：每时间步输入前一层的决策嵌入向量，输出当前层的动作概率分布。对于七层模型，一次完整的 rollout 生成 7 个时间步的决策序列。</p>
+  <p>备选方案：<strong>Transformer 控制器</strong>，微软研究院（2024）报告比 RNN 控制器提升约 22% 的样本效率。</p>
+
+  <h3>4.4 Critic（价值网络）设计 <span style="font-size:0.7em; color:#e53e3e;">★ 补充</span></h3>
+
+  <h4>4.4.1 Critic 的作用</h4>
+  <p>PPO 是 <strong>Actor-Critic 算法</strong>，需要 Critic 网络估计每个状态的价值 V(s)，用于计算优势函数：</p>
+  <p style="text-align:center; padding:10px; background:#edf2f7; border-radius:6px; font-family:Consolas, monospace;">
+    A_t = (r_t + γ·V(s_{t+1}) + γ²·V(s_{t+2}) + ...) − V(s_t) ≈ GAE(δ_t, δ_{t+1}, ...)
+  </p>
+  <p>即使中间步骤的即时奖励 r_t = 0，Critic 也能通过估计"当前 partial 架构未来能得多少分"来为每一步产生独立的优势信号，从而告诉 Actor 每一步的决策是好是坏。</p>
+
+  <h4>4.4.2 Critic 架构方案对比</h4>
+  <table>
+    <tr><th>方案</th><th>结构</th><th>优点</th><th>缺点</th><th>推荐度</th></tr>
+    <tr>
+      <td><strong>方案A：共享骨干 + 独立头</strong></td>
+      <td>同一个 LSTM 编码状态 → Actor 头（Softmax）和 Critic 头（Scalar）并行</td>
+      <td>参数高效；特征共享减少过拟合；训练最快</td>
+      <td>Actor 和 Critic 的梯度可能在共享层冲突</td>
+      <td>⭐⭐⭐⭐⭐<br><strong>首选</strong></td>
+    </tr>
+    <tr>
+      <td><strong>方案B：独立 Critic 网络</strong></td>
+      <td>两套独立的 LSTM，分别用于 Actor 和 Critic</td>
+      <td>无梯度冲突；可各自独立调参</td>
+      <td>参数量翻倍；训练更慢；没有特征复用</td>
+      <td>⭐⭐⭐<br>备选</td>
+    </tr>
+    <tr>
+      <td><strong>方案C：非序列化 Critic</strong></td>
+      <td>将 partial 架构编码为固定特征向量（如 GNN/MLP），不经 LSTM，直接输出 V(s)</td>
+      <td>结构简单；训练快；梯度路径短</td>
+      <td>可能丢失序列上下文信息</td>
+      <td>⭐⭐⭐⭐<br>值得尝试</td>
+    </tr>
+  </table>
+
+  <h4>4.4.3 推荐方案：共享 LSTM 骨干 + 双头结构</h4>
+  <div class="model-diagram">
+    <div class="layer-block" style="background:#e2e8f0; color:#1a365d; border:2px solid #a0aec0;">状态 s_t<br><small>partial arch 编码</small></div>
+    <div class="layer-arrow">→</div>
+    <div class="layer-block" style="background:#bee3f8; color:#1a365d; border:2px solid #3182ce;">共享<br>LSTM<br><small>h_t = LSTM(x_t, h_{t-1})</small></div>
+    <div class="layer-arrow" style="font-size:2em;">↘</div>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      <div class="layer-block layer-linear" style="font-size:0.7em;">Actor 头<br>MLP → Softmax<br><small>→ π(a|s)</small></div>
+      <div class="layer-block" style="background:#c6f6d5; color:#22543d; border:2px solid #38a169; font-size:0.7em;">Critic 头<br>MLP → Linear(1)<br><small>→ V(s) ∈ ℝ</small></div>
+    </div>
+  </div>
+  <p style="text-align:center; color:#718096; font-size:0.85em; margin-top:8px;">图2：Actor-Critic 双头共享架构示意。LSTM 隐状态 h_t 同时输入 Actor 头和 Critic 头。</p>
+
+  <h4>4.4.4 Critic 头具体结构</h4>
+  <table>
+    <tr><th>组件</th><th>规格</th><th>说明</th></tr>
+    <tr>
+      <td><strong>输入</strong></td>
+      <td>LSTM 隐状态 h_t ∈ ℝᴴ<br>（H = LSTM hidden size，如 128）</td>
+      <td>与 Actor 头共享同一个 h_t</td>
+    </tr>
+    <tr>
+      <td><strong>隐层 1</strong></td>
+      <td>Linear(H → H) + ReLU</td>
+      <td>非线性变换，容量与 LSTM 隐层匹配</td>
+    </tr>
+    <tr>
+      <td><strong>隐层 2</strong></td>
+      <td>Linear(H → H/2) + ReLU</td>
+      <td>压缩维度，减少过拟合</td>
+    </tr>
+    <tr>
+      <td><strong>输出</strong></td>
+      <td>Linear(H/2 → 1)</td>
+      <td>输出标量 V(s) ∈ ℝ，无激活函数</td>
+    </tr>
+  </table>
+
+  <h4>4.4.5 Critic 损失函数</h4>
+  <p>Critic 的训练目标是最小化其预测值与实际回报之间的均方误差（MSE）：</p>
+  <p style="text-align:center; padding:10px; background:#edf2f7; border-radius:6px; font-family:Consolas, monospace;">
+    L_critic(φ) = (1/T) · Σ_t ( V_φ(s_t) − G_t )²
+  </p>
+  <p>其中 G_t 是通过 GAE 从终端奖励反传得到的 return（即 advantage + V_φ(s_t) 的 detached 值）。</p>
+  <p>PPO 的总损失为 Actor 损失和 Critic 损失的加权和：</p>
+  <p style="text-align:center; padding:10px; background:#edf2f7; border-radius:6px; font-family:Consolas, monospace;">
+    L_total = L_actor + c_v · L_critic − c_e · H(π)
+  </p>
+  <ul>
+    <li><code>c_v</code>：Critic 损失系数，典型值 0.5～1.0</li>
+    <li><code>c_e</code>：熵正则化系数（鼓励探索），典型值 0.01～0.1</li>
+    <li><code>H(π)</code>：策略熵，防止过早收敛到次优架构</li>
+  </ul>
+
+  <h4>4.4.6 实现注意事项</h4>
+  <ul>
+    <li><strong>价值裁剪（Value Clipping）</strong>：与 PPO 的策略裁剪类似，可对 Critic 的更新幅度进行裁剪，防止单步价值估计突变破坏训练：<br>
+      <code>V_clipped = V_old + clip(V_new − V_old, −ε, +ε)</code><br>
+      <code>L_critic = max( (V_new − G)², (V_clipped − G)² )</code></li>
+    <li><strong>价值归一化</strong>：对 returns G_t 做 batch 归一化或维护运行均值/方差，使 Critic 的目标分布稳定，加速收敛</li>
+    <li><strong>梯度流控制</strong>：在计算 Actor 损失时，应 <code>detach()</code> Critic 的输出，防止 Critic 的梯度污染 Actor 的更新方向（反之亦然，需仔细设计反向传播路径）</li>
+    <li><strong>独立优化器 vs 共享优化器</strong>：推荐 Actor 和 Critic 使用同一个优化器（Adam），共享 LSTM 参数时自然联合优化；若采用方案 B（独立网络），则各用独立优化器</li>
+  </ul>
+</div>
+
+<!-- ==================== 5. 两个已知困难 ==================== -->
+<div class="section">
+  <h2>五、两个已知困难及初步思考</h2>
+
+  <div class="difficulty-box">
+    <h4>⚠️ 困难一：奖励函数设计</h4>
+    <p><strong>问题描述：</strong>奖励函数的设计直接关系到 PPO 能否收敛、能否找到真正好的架构。单一的性能指标（如最终 NMSE/EVM）可能无法全面反映架构质量；而多目标加权又面临权重调优困难，且加权求和无法到达非凸 Pareto 前沿上的解。</p>
+    <p><strong>影响：</strong>如果奖励信号噪声过大或设计不当，策略梯度可能无法引导搜索走向高质量区域。</p>
+  </div>
+
+  <div class="difficulty-box">
+    <h4>⚠️ 困难二：搜索时间过长</h4>
+    <p><strong>问题描述：</strong>每个 case 的数据完整训练（1000 epochs）需要约 <strong>20 分钟</strong>。且存在多个不同 case 的数据，单个 case 的表现不足以反映模型的泛化能力，需要在多个 case 上均表现良好才能说明搜索到的架构具有鲁棒性。假设每次评估需要训练 3–5 个 case，单次架构评估就可能需要 1–1.5 小时。</p>
+    <p><strong>影响：</strong>PPO 需要大量采样和评估迭代，按完整训练计算，搜索时间可能达到天级别甚至更长。</p>
+
+    <h4>初步缓解思路</h4>
+    <div class="solution-box">
+      <h4>💡 思路A：短训练代理（Early-Stopping Proxy）</h4>
+      <p>将完整训练（1000 epochs）缩短为 <strong>300 epochs</strong>，用初步性能作为最终性能的代理指标。文献表明，NAS-Bench-201 上仅需 10–12 个 epoch 即可使排名相关性达到 0.6+；300 epochs 足以提供可靠的相对排序信号。</p>
+      <p>可结合 <strong>TSE（Training Speed Estimation）</strong>：用近期训练 loss 的累积和作为性能预测代理，在小预算下排名相关性优于零成本代理。</p>
+    </div>
+    <div class="solution-box">
+      <h4>💡 思路B：权重共享（Weight Sharing）</h4>
+      <p>每次与旧策略比较时，对于架构<strong>未改变的那些层</strong>，直接复用其已训练的权重，仅训练发生了变化的层。这类似于 ENAS 的参数共享机制，可以显著加速收敛。但需注意"优化差距"（optimization gap）问题——共享权重可能无法精确反映独立训练的性能。</p>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== 6. 实验设计 ==================== -->
+<div class="section">
+  <h2>六、实验设计概要</h2>
+
+  <h3>6.1 第一阶段实验（软参搜索）</h3>
+  <ol>
+    <li><strong>基准测试：</strong>在多个典型 case 上评估当前人工设计的基线模型，记录性能（NMSE/EVM）和资源量（参数量、MACs）</li>
+    <li><strong>搜索空间验证：</strong>随机采样若干架构并完整训练，验证搜索空间的合理性和性能分布范围</li>
+    <li><strong>PPO 搜索运行：</strong>配置奖励函数权重，运行 PPO-NAS 搜索（预计 100–500 次架构评估）</li>
+    <li><strong>Pareto 分析：</strong>在性能-资源平面上绘制 Pareto 前沿，选取 3–5 个代表性架构进行完整训练验证</li>
+    <li><strong>跨 case 验证：</strong>将搜索到的最优架构在多个未参与搜索的 case 上测试泛化能力</li>
+  </ol>
+
+  <h3>6.2 第二阶段实验（量化位宽分配）</h3>
+  <ol>
+    <li>在第一阶段选定的最优架构基础上，定义逐层量化位宽搜索空间</li>
+    <li>引入量化感知训练（QAT）评估候选量化策略</li>
+    <li>PPO 搜索最优位宽分配方案</li>
+    <li>与均匀量化基线（如全部 8bit / 全部 16bit）对比</li>
+  </ol>
+
+  <h3>6.3 多 Case 评估策略</h3>
+  <p>在搜索过程中，每个候选架构在<strong>随机采样的 K 个 case（K=3~5）</strong>上快速训练（300 epochs），以平均性能作为奖励信号。这比单 case 评估更具泛化性，同时通过短训练控制时间开销。</p>
+</div>
+
+<!-- ==================== 7. 研究时间线 ==================== -->
+<div class="section">
+  <h2>七、预期研究路线图</h2>
+  <table>
+    <tr><th>阶段</th><th>内容</th><th>预计时间</th></tr>
+    <tr><td><strong>Phase 0</strong></td><td>奖励函数方案确定 + 搜索框架搭建 + 基线评估</td><td>第 1–2 周</td></tr>
+    <tr><td><strong>Phase 1a</strong></td><td>短训练代理验证：验证 300-epoch 排名与 1000-epoch 排名的相关性</td><td>第 2–3 周</td></tr>
+    <tr><td><strong>Phase 1b</strong></td><td>PPO 软参搜索运行 + Pareto 分析 + 最优架构验证</td><td>第 3–6 周</td></tr>
+    <tr><td><strong>Phase 2</strong></td><td>量化位宽分配搜索 + 存储资源评估</td><td>第 6–8 周</td></tr>
+    <tr><td><strong>Phase 3</strong></td><td>论文撰写 + 消融实验 + 补充实验</td><td>第 8–10 周</td></tr>
+  </table>
+</div>
+
+<!-- ==================== 8. 预期贡献 ==================== -->
+<div class="section">
+  <h2>八、预期贡献与创新点</h2>
+  <ol>
+    <li><strong>首次将 PPO-NAS 应用于 DPD 混合模型：</strong>将强化学习驱动的架构搜索引入数字预失真领域，填补 NAS 在 DPD 中应用的研究空白</li>
+    <li><strong>多维度统一搜索框架：</strong>在同一 PPO 框架下联合搜索卷积核大小、卷积类型、样条数、初始化策略和归一化策略，而非单独优化每个维度</li>
+    <li><strong>两阶段渐进搜索：</strong>先搜索软参确定架构，再搜索量化位宽降低存储，形成从"粗粒度架构搜索"到"细粒度量化优化"的完整流水线</li>
+    <li><strong>面向实际部署的资源感知搜索：</strong>以参数量和存储资源为直接优化目标，而非仅以浮点性能为指标，搜索到的架构更具实际部署价值</li>
+  </ol>
+</div>
+
+<div class="footer">
+  <p>基于 PPO 的 NAS 研究方案 · 2026年6月 · Version 1.0</p>
+</div>
+
+</div>
+</body>
+</html>

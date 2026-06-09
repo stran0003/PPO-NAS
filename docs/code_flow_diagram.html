@@ -1,0 +1,682 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPO-NAS 代码逻辑流程全览</title>
+<style>
+  :root {
+    --blue: #2b6cb0; --red: #e53e3e; --green: #38a169;
+    --yellow: #d69e2e; --purple: #6b46c1; --orange: #dd6b20;
+    --teal: #319795; --pink: #d53f8c; --grey: #718096;
+    --bg: #f7fafc; --card: #ffffff; --text: #1a202c;
+    --border: #e2e8f0;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", monospace;
+         background: var(--bg); color: var(--text); line-height: 1.7; }
+
+  .container { max-width: 1200px; margin: 0 auto; padding: 30px 20px; }
+
+  h1 { text-align: center; color: var(--blue); font-size: 2em; margin-bottom: 6px; }
+  .subtitle { text-align: center; color: var(--grey); margin-bottom: 30px; font-size: 0.9em; }
+
+  h2 { font-size: 1.4em; color: var(--blue); margin: 36px 0 16px; padding: 8px 16px;
+       border-left: 4px solid var(--blue); background: #ebf4ff; border-radius: 0 6px 6px 0; }
+
+  /* ── 流程图容器 ── */
+  .flow-section { margin: 24px 0; }
+
+  /* ── 主流程框 ── */
+  .main-pipeline {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+    border-radius: 14px; padding: 24px 16px; margin: 20px 0;
+    overflow-x: auto;
+  }
+  .pipe-box {
+    background: linear-gradient(135deg, #2b6cb0, #3182ce);
+    color: #fff; border-radius: 10px; padding: 18px 22px;
+    text-align: center; min-width: 110px; flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(43,108,176,.3);
+  }
+  .pipe-box.highlight { background: linear-gradient(135deg, #e53e3e, #fc8181); }
+  .pipe-box.green { background: linear-gradient(135deg, #276749, #38a169); }
+  .pipe-box.purple { background: linear-gradient(135deg, #553c9a, #805ad5); }
+  .pipe-box.orange { background: linear-gradient(135deg, #9c4221, #dd6b20); }
+  .pipe-box .box-title { font-weight: 700; font-size: 1.05em; }
+  .pipe-box .box-sub { font-size: 0.78em; opacity: .85; margin-top: 4px; }
+  .pipe-arrow { color: #a0aec0; font-size: 1.5em; flex-shrink: 0; font-weight: bold; }
+
+  /* ── 详细子步骤 ── */
+  .detail-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px; margin: 16px 0;
+  }
+  .detail-card {
+    background: var(--card); border-radius: 10px; padding: 20px 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06); border: 1px solid var(--border);
+    border-top: 3px solid var(--blue);
+  }
+  .detail-card.red { border-top-color: var(--red); }
+  .detail-card.green { border-top-color: var(--green); }
+  .detail-card.purple { border-top-color: var(--purple); }
+  .detail-card.orange { border-top-color: var(--orange); }
+  .detail-card.teal { border-top-color: var(--teal); }
+
+  .detail-card h4 { font-size: 0.95em; margin-bottom: 8px; }
+  .detail-card .file-ref { font-size: 0.78em; color: var(--grey); margin-bottom: 10px; }
+
+  /* ── 代码块 ── */
+  pre { background: #1a202c; color: #e2e8f0; padding: 16px 20px; border-radius: 8px;
+        font-size: 0.82em; line-height: 1.6; overflow-x: auto; margin: 10px 0; }
+  pre .kw { color: #fc8181; }
+  pre .fn { color: #68d391; }
+  pre .cm { color: #a0aec0; }
+  pre .num { color: #f6ad55; }
+  pre .str { color: #fbd38d; }
+
+  /* ── 文件-函数映射表 ── */
+  .file-map { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.88em; }
+  .file-map th, .file-map td { padding: 8px 12px; text-align: left; border: 1px solid var(--border); }
+  .file-map th { background: #edf2f7; }
+  .file-map .file-col { font-family: monospace; color: var(--blue); font-weight: 600; }
+
+  /* ── 标签 ── */
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 0.78em; font-weight: 600; }
+  .tag-blue { background: #bee3f8; color: #2b6cb0; }
+  .tag-red { background: #fed7d7; color: #9b2c2c; }
+  .tag-green { background: #c6f6d5; color: #276749; }
+  .tag-purple { background: #e9d8fd; color: #553c9a; }
+
+  /* ── 数据流图 ── */
+  .data-flow {
+    background: var(--card); border-radius: 10px; padding: 20px 24px; margin: 16px 0;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06); border: 1px solid var(--border);
+  }
+
+  .flow-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; flex-wrap: wrap; }
+  .tensor-tag { background: #1a202c; color: #68d391; padding: 6px 14px; border-radius: 6px;
+                font-family: monospace; font-size: 0.85em; white-space: nowrap; }
+  .tensor-tag.shape { background: #2d3748; color: #f6ad55; font-size: 0.75em; }
+  .arrow-char { color: var(--grey); font-size: 1.2em; }
+
+  .toc { background: var(--card); border-radius: 10px; padding: 20px 28px; margin: 16px 0;
+         box-shadow: 0 1px 4px rgba(0,0,0,.06); border: 1px solid var(--border); }
+  .toc ul { list-style: none; padding-left: 0; columns: 2; }
+  .toc li { padding: 3px 0; }
+  .toc a { color: var(--blue); text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+
+  @media (max-width: 768px) {
+    .main-pipeline { flex-direction: column; }
+    .pipe-arrow { transform: rotate(90deg); }
+    .toc ul { columns: 1; }
+    .detail-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🔍 PPO-NAS 代码逻辑流程全览</h1>
+<p class="subtitle">文件: main.py → environment.py → ppo.py → controller.py → reward.py · 生成于 2026-06-04</p>
+
+<!-- ====== TOC ====== -->
+<div class="toc">
+<b>📑 目录</b>
+<ul>
+  <li><a href="#s0">0. 项目文件结构</a></li>
+  <li><a href="#s1">1. 总流程概览（main → 搜索 → 输出）</a></li>
+  <li><a href="#s2">2. 一轮 PPO 迭代详解</a></li>
+  <li><a href="#s3">3. Controller：Actor-Critic LSTM</a></li>
+  <li><a href="#s4">4. 搜索空间 & 架构编码</a></li>
+  <li><a href="#s5">5. 评估 & 奖励计算</a></li>
+  <li><a href="#s6">6. PPO 更新（Loss 计算）</a></li>
+  <li><a href="#s7">7. GAE 优势计算</a></li>
+  <li><a href="#s8">8. 数据流全览（Tensor 维度追踪）</a></li>
+  <li><a href="#s9">9. 文件-类-函数映射表</a></li>
+</ul>
+</div>
+
+<!-- ====== 0. 文件结构 ====== -->
+<h2 id="s0">0. 项目文件结构</h2>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h4>📄 入口 & 配置</h4>
+    <div class="file-ref">根目录</div>
+    <table style="font-size:0.85em; width:100%;">
+      <tr><td style="font-family:monospace; color:var(--blue)">main.py</td><td>主入口，解析参数，启动搜索</td></tr>
+      <tr><td style="font-family:monospace; color:var(--blue)">config.yaml</td><td>所有超参数配置</td></tr>
+      <tr><td style="font-family:monospace; color:var(--blue)">auto.sh</td><td>一键运行脚本</td></tr>
+    </table>
+  </div>
+  <div class="detail-card green">
+    <h4>📁 libs/ — 核心库</h4>
+    <div class="file-ref">libs/</div>
+    <table style="font-size:0.85em; width:100%;">
+      <tr><td style="font-family:monospace; color:var(--green)">environment.py</td><td>搜索环境，串联全流程</td></tr>
+      <tr><td style="font-family:monospace; color:var(--green)">ppo.py</td><td>PPO 训练器（核心算法）</td></tr>
+      <tr><td style="font-family:monospace; color:var(--green)">reward.py</td><td>奖励函数 + Pareto 管理</td></tr>
+      <tr><td style="font-family:monospace; color:var(--green)">weight_transfer.py</td><td>权重共享（未集成）</td></tr>
+    </table>
+  </div>
+  <div class="detail-card purple">
+    <h4>📁 libs/model/ — 模型</h4>
+    <div class="file-ref">libs/model/</div>
+    <table style="font-size:0.85em; width:100%;">
+      <tr><td style="font-family:monospace; color:var(--purple)">controller.py</td><td>Actor-Critic LSTM</td></tr>
+      <tr><td style="font-family:monospace; color:var(--purple)">search_space.py</td><td>搜索空间定义 & 编解码</td></tr>
+      <tr><td style="font-family:monospace; color:var(--purple)">dpd_model.py</td><td>DPD 模型（评估用）</td></tr>
+    </table>
+  </div>
+  <div class="detail-card orange">
+    <h4>📁 libs/analysis/ — 分析</h4>
+    <div class="file-ref">libs/analysis/</div>
+    <table style="font-size:0.85em; width:100%;">
+      <tr><td style="font-family:monospace; color:var(--orange)">plotting.py</td><td>可视化（Pareto/训练曲线）</td></tr>
+      <tr><td style="font-family:monospace; color:var(--orange)">evaluation.py</td><td>NOSH 淘汰 & 排名验证</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ====== 1. 总流程 ====== -->
+<h2 id="s1">1. 总流程概览</h2>
+
+<div class="main-pipeline">
+  <div class="pipe-box">
+    <div class="box-title">📋 main.py</div>
+    <div class="box-sub">parse_args()<br>load_config()</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-box green">
+    <div class="box-title">🏗️ NASEnvironment</div>
+    <div class="box-sub">初始化 Controller<br>+ PPOTrainer + Pareto</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-box highlight">
+    <div class="box-title">🔄 env.run()</div>
+    <div class="box-sub">for it in 0..500:<br>train_one_iteration()</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-box purple">
+    <div class="box-title">📊 输出</div>
+    <div class="box-sub">Pareto 前沿<br>训练曲线图<br>checkpoint</div>
+  </div>
+</div>
+
+<div class="data-flow">
+<b>🔗 调用链</b>：
+<div class="flow-row">
+  <span class="tensor-tag">main.py:run_search()</span>
+  <span class="arrow-char">→</span>
+  <span class="tensor-tag">NASEnvironment(config)</span>
+  <span class="arrow-char">→</span>
+  <span class="tensor-tag">env.run()</span>
+  <span class="arrow-char">→</span>
+  <span class="tensor-tag">trainer.train_one_iteration(eval_fn)</span>
+  <span class="arrow-char">→</span>
+  <span class="tensor-tag">controller.forward(batch)</span>
+  <span class="arrow-char">→</span>
+  <span class="tensor-tag">evaluate_architecture(arch)</span>
+  <span class="arrow-char">→</span>
+  <span class="tensor-tag">compute_reward(nmse, params)</span>
+  <span class="arrow-char">→</span>
+  <span class="tensor-tag">_compute_gae(rewards, values)</span>
+  <span class="arrow-char">→</span>
+  <span class="tensor-tag">_ppo_update(...)</span>
+</div>
+</div>
+
+<!-- ====== 2. 一轮 PPO 迭代 ====== -->
+<h2 id="s2">2. 一轮 PPO 迭代详解</h2>
+<div class="file-ref" style="margin-bottom:12px;">📄 libs/ppo.py :: train_one_iteration() [line 41]</div>
+
+<div class="main-pipeline">
+  <div class="pipe-box">
+    <div class="box-title">① 采样</div>
+    <div class="box-sub">controller.forward(16)<br>→ 16个架构</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-box highlight">
+    <div class="box-title">② 评估</div>
+    <div class="box-sub">for arch in 16个:<br>evaluate_architecture(arch)<br>→ nmse, params</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-box orange">
+    <div class="box-title">③ 奖励</div>
+    <div class="box-sub">compute_reward(nmse,params)<br>→ 16 个 scalar</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-box purple">
+    <div class="box-title">④ GAE</div>
+    <div class="box-sub">_compute_gae(rewards,values)<br>→ advantages, returns</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-box green">
+    <div class="box-title">⑤ PPO 更新 ×4</div>
+    <div class="box-sub">每 epoch 打乱 minibatch<br>controller.evaluate() 重算<br>→ loss.backward()</div>
+  </div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h4>① 采样（Sampling）</h4>
+    <div class="file-ref">ppo.py:54 — controller.forward(n_rollout=16)</div>
+    <pre><span class="cm"># LSTM 逐时间步生成，每步采样多个独立 Categorical 分布</span>
+<span class="kw">for</span> t <span class="kw">in</span> range(7):       <span class="cm"># 7 层</span>
+    h_t = lstm(prev_x)         <span class="cm"># LSTM 一步前向</span>
+    c ~ Categorical(actor_conv(h_t))   <span class="cm"># 选卷积类型 (2选1)</span>
+    k ~ Categorical(actor_kernel(h_t)) <span class="cm"># 选核大小 (5选1)</span>
+    i ~ Categorical(actor_init(h_t))   <span class="cm"># 选初始化 (3选1)</span>
+    V(s) = critic(h_t)                <span class="cm"># 状态价值</span></pre>
+  </div>
+  <div class="detail-card red">
+    <h4>② 评估（Evaluation）</h4>
+    <div class="file-ref">ppo.py:61-77 — 每个架构独立评估</div>
+    <pre><span class="kw">for</span> arch <span class="kw">in</span> architectures:    <span class="cm"># 16 个架构</span>
+    <span class="kw">if</span> eval_fn:                       <span class="cm"># 真实评估</span>
+        metrics = eval_fn(arch, epochs=300)
+    <span class="kw">else</span>:                              <span class="cm"># 模拟评估</span>
+        metrics = evaluate_architecture(arch)
+    nmse = metrics[<span class="str">"nmse"</span>]         <span class="cm"># dB, 越小越好</span>
+    params = metrics[<span class="str">"num_params"</span>]
+    r = compute_reward(nmse, params)  <span class="cm"># → scalar 奖励</span></pre>
+  </div>
+  <div class="detail-card orange">
+    <h4>③ 奖励计算</h4>
+    <div class="file-ref">libs/reward.py:19 — compute_reward()</div>
+    <pre><span class="kw">def</span> <span class="fn">compute_reward</span>(nmse, num_params, config):
+    perf_score = -nmse * acc_weight         <span class="cm"># 性能: NMSE越小→得分越高</span>
+    param_penalty = param_weight * (num_params / target_params)
+    <span class="kw">return</span> perf_score - param_penalty    <span class="cm"># R 越大越好</span></pre>
+  </div>
+  <div class="detail-card purple">
+    <h4>④ GAE 优势计算</h4>
+    <div class="file-ref">ppo.py:113 — _compute_gae()</div>
+    <pre><span class="kw">for</span> t <span class="kw">in</span> reversed(range(7)):   <span class="cm"># 从后往前</span>
+    δ = r + γ·V(s_{t+1}) - V(s_t)  <span class="cm"># TD error</span>
+    A_t = δ + γ·λ·A_{t+1}          <span class="cm"># 指数加权累积</span>
+A = (A - mean) / std                <span class="cm"># 归一化</span>
+R_target = A + V(s)                 <span class="cm"># Critic 训练目标</span></pre>
+  </div>
+</div>
+
+<!-- ====== 3. Controller ====== -->
+<h2 id="s3">3. Controller：Actor-Critic LSTM 详解</h2>
+<div class="file-ref" style="margin-bottom:12px;">📄 libs/model/controller.py [303 行]</div>
+
+<div class="data-flow">
+<b>🏛️ 网络结构</b>：
+<pre style="margin:10px 0;">
+<span style="color:#fbd38d">输入 (21维 one-hot 特征)</span>
+       │
+       ▼
+  input_proj: Linear(21 → 128)
+       │
+       ▼
+  <span style="color:#fc8181; font-weight:bold;">共享 LSTM (2层, hidden=128)</span>
+       │
+       ├──────────────────────────────────────┐
+       ▼                                      ▼
+  <span style="color:#68d391; font-weight:bold;">Actor 头 (4个独立 Linear)</span>          <span style="color:#63b3ed; font-weight:bold;">Critic 头</span>
+  ├─ actor_conv:   128→2  (卷积类型)      Linear(128→128) + ReLU
+  ├─ actor_kernel: 128→5  (核大小)        Linear(128→64)  + ReLU
+  ├─ actor_init:   128→3  (初始化策略)    Linear(64→1)    → V(s)
+  └─ actor_spline: 128→5  (样条数,LUT用)
+</pre>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h4>⏱️ 时间步展开（7步）</h4>
+    <pre>t=0: start_token → LSTM → h₀
+     ├─ Actor 采样: conv, kernel, init
+     └─ Critic: V(s₀)
+
+t=1: encode(arch[0]) 21维 → LSTM → h₁
+     ├─ Actor 采样: conv, kernel, init
+     └─ Critic: V(s₁)
+
+...
+
+t=3 (LUT层): 只采样 spline (1个分布)
+
+...
+
+t=6: encode(arch[5]) → LSTM → h₆
+     ├─ Actor 采样: conv, kernel, init
+     └─ Critic: V(s₆)</pre>
+  </div>
+  <div class="detail-card purple">
+    <h4>📊 输出张量维度</h4>
+    <table style="font-size:0.88em; width:100%;">
+      <tr><th>变量</th><th>维度</th><th>含义</th></tr>
+      <tr><td>log_probs</td><td style="font-family:monospace;color:#f6ad55">(B, 7)</td><td>每步总 log 概率</td></tr>
+      <tr><td>values</td><td style="font-family:monospace;color:#f6ad55">(B, 7)</td><td>每步 Critic 估值</td></tr>
+      <tr><td>entropies</td><td style="font-family:monospace;color:#f6ad55">(B, 7)</td><td>每步总熵</td></tr>
+      <tr><td>architectures</td><td>list[B] of list[7]</td><td>每样本每层的配置 dict</td></tr>
+      <tr><td>actions</td><td>list[B][7]</td><td>每样本每步的动作索引</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ====== 4. 搜索空间 ====== -->
+<h2 id="s4">4. 搜索空间 & 架构编码</h2>
+<div class="file-ref" style="margin-bottom:12px;">📄 libs/model/search_space.py [163 行]</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h4>🔧 固定 7 层结构</h4>
+    <pre>L1 (线性) → L2 (线性) → L3 (线性)
+  → L4 (LUT非线性)
+  → L5 (线性) → L6 (线性) → L7 (线性)</pre>
+  </div>
+  <div class="detail-card">
+    <h4>🎯 每层的搜索选项</h4>
+    <table style="font-size:0.88em; width:100%;">
+      <tr><th>层类型</th><th>决策数</th><th>选项</th><th>组合数</th></tr>
+      <tr>
+        <td><b>线性层</b></td>
+        <td>3 个独立选择</td>
+        <td>conv(2) × kernel(5) × init(3)</td>
+        <td><b>30</b></td>
+      </tr>
+      <tr>
+        <td><b>LUT 层</b></td>
+        <td>1 个选择</td>
+        <td>spline(5)</td>
+        <td><b>5</b></td>
+      </tr>
+    </table>
+    <p style="margin-top:8px; font-size:0.85em;">总搜索空间：<b>30⁶ × 5¹ = 3,645,000,000</b> 种架构</p>
+  </div>
+  <div class="detail-card teal">
+    <h4>🔄 架构 ↔ 特征编码</h4>
+    <pre><span class="cm"># 架构 → 21维 one-hot 向量 (给 LSTM 输入)</span>
+encode_layer_action({"type":"linear","kernel":5,"conv":"grouped","init":"xavier"})
+→ [1,0, 0,1,0,0,0, 1,0, 0,1,0, 0,0,1,0,0, 1,0, 1,0]
+   <span class="cm">│类型│  │── kernel(5)──│ │conv│ │─init─│ │spline│ │预留│ │预留│</span>
+
+<span class="cm"># 动作索引 → 层配置</span>
+decode_actions(t=0, [0, 2, 1])
+→ {"type":"linear", "kernel":7, "conv":"grouped", "init":"xavier"}</pre>
+  </div>
+</div>
+
+<!-- ====== 5. 评估 & 奖励 ====== -->
+<h2 id="s5">5. 评估 & 奖励计算流程</h2>
+
+<div class="data-flow">
+<b>📐 从架构 → 奖励的完整链路</b>：
+
+<div class="main-pipeline" style="padding:16px;">
+  <div class="pipe-box">
+    <div class="box-title">build_model(arch)</div>
+    <div class="box-sub">7层配置 → DPDModel<br>估算参数量</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-box highlight">
+    <div class="box-title">model.train(300)</div>
+    <div class="box-sub">真实训练 300 epochs<br>（模拟模式下跳过）</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-box green">
+    <div class="box-title">model.evaluate()</div>
+    <div class="box-sub">验证集评估<br>→ nmse, num_params</div>
+  </div>
+  <div class="pipe-arrow">→</div>
+  <div class="pipe-box orange">
+    <div class="box-title">compute_reward()</div>
+    <div class="box-sub">R = -nmse<br>- w·(params/target)</div>
+  </div>
+</div>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card">
+    <h4>💰 奖励公式（simple 策略）</h4>
+    <div class="file-ref">libs/reward.py:56</div>
+    <pre>R = -nmse * 1.0 - 0.1 * (params / 100000)</pre>
+    <p><b>举例</b>：nmse=-32, params=120000</p>
+    <pre>R = 32.0 - 0.12 = <b>31.88</b>  ✅ 好架构</pre>
+    <p><b>举例</b>：nmse=-28, params=200000</p>
+    <pre>R = 28.0 - 0.20 = <b>27.80</b>  ❌ 差一些</pre>
+  </div>
+  <div class="detail-card">
+    <h4>📈 Pareto 前沿管理</h4>
+    <div class="file-ref">libs/reward.py:64 — ParetoFront 类</div>
+    <pre>
+<span class="kw">class</span> <span class="fn">ParetoFront</span>:
+    <span class="kw">def</span> <span class="fn">add</span>(nmse, params, arch):
+        <span class="cm"># 被已有架构支配 → 不添加</span>
+        <span class="cm"># 支配了旧架构 → 踢掉旧的</span>
+        <span class="cm"># 互不支配 → 加入前沿</span>
+
+支配判断: A 支配 B ⇔
+  nmse_A ≤ nmse_B <span class="kw">AND</span> params_A ≤ params_B
+  <span class="kw">AND</span> 至少一个严格小于</pre>
+  </div>
+</div>
+
+<!-- ====== 6. PPO 更新 ====== -->
+<h2 id="s6">6. PPO 更新（Loss 计算）</h2>
+<div class="file-ref" style="margin-bottom:12px;">📄 libs/ppo.py :: _ppo_update() [line 153]</div>
+
+<div class="data-flow">
+<b>🧮 一次 PPO epoch 内的计算图</b>：
+<pre style="margin:10px 0;">
+<span style="color:#a0aec0">/* 输入 (全部 detach, 当作常量标签) */</span>
+old_log_probs (B,7)   ← rollout 时的策略概率
+old_values    (B,7)   ← rollout 时的 Critic 估值
+advantages    (B,7)   ← GAE 计算的优势 (归一化后)
+returns       (B,7)   ← GAE 计算的回报 = A + V
+
+<span style="color:#a0aec0">/* 当前策略重新推理 */</span>
+new_log_probs, new_values, new_entropies = controller.evaluate(archs, actions)
+                                          ↑
+                                    只有这三个是"活"的（连着梯度）
+
+<span style="color:#a0aec0">/* ── Actor Loss ── */</span>
+ratio = exp(new_log_probs − old_log_probs)        <span style="color:#a0aec0">// (B,7) 策略变化比</span>
+surr1 = ratio × advantages                        <span style="color:#a0aec0">// 不加约束的目标</span>
+surr2 = clamp(ratio, 0.8, 1.2) × advantages      <span style="color:#a0aec0">// clip 约束的目标</span>
+actor_loss = −mean( min(surr1, surr2) )           <span style="color:#a0aec0">// 取 min → 安全阀</span>
+
+<span style="color:#a0aec0">/* ── Critic Loss ── */</span>
+critic_loss = MSE(new_values, returns)             <span style="color:#a0aec0">// 价值回归</span>
+
+<span style="color:#a0aec0">/* ── 总损失 ── */</span>
+loss = actor_loss + 0.5×critic_loss − 0.01×mean(new_entropies)
+       ↑                ↑                     ↑
+  策略优化         价值估计              鼓励探索（最大化熵）
+
+<span style="color:#a0aec0">/* ── 梯度更新 ── */</span>
+optimizer.zero_grad()
+loss.backward()                    <span style="color:#a0aec0">// 梯度流过 new_log_probs, new_values</span>
+clip_grad_norm(max=0.5)           <span style="color:#a0aec0">// 梯度裁剪</span>
+optimizer.step()                   <span style="color:#a0aec0">// 更新 Controller 所有参数</span>
+</pre>
+</div>
+
+<div class="detail-grid">
+  <div class="detail-card red">
+    <h4>🔒 Clip 机制详解</h4>
+    <pre><span class="cm"># 当 advantage > 0 (好动作)</span>
+ratio = 1.3  →  min(1.3·A, 1.2·A) = 1.2·A  <span class="cm"># 被 clip</span>
+ratio = 1.1  →  min(1.1·A, 1.1·A) = 1.1·A  <span class="cm"># 正常通过</span>
+
+<span class="cm"># 当 advantage < 0 (坏动作)</span>
+ratio = 0.6  →  max(0.6·A, 0.8·A) = 0.8·A  <span class="cm"># 被 clip (min取更负的)</span>
+ratio = 0.9  →  max(0.9·A, 0.9·A) = 0.9·A  <span class="cm"># 正常通过</span></pre>
+    <p>clip 范围内的样本 → 梯度正常回传<br>clip 范围外的样本 → ratio 对梯度贡献为 0（被 min 截断）</p>
+  </div>
+  <div class="detail-card">
+    <h4>🔀 Minibatch 打乱</h4>
+    <pre><span class="kw">for</span> epoch <span class="kw">in</span> range(4):           <span class="cm"># 每个 epoch:</span>
+    indices = randperm(16)       <span class="cm"># 重新随机排列</span>
+    <span class="kw">for</span> start <span class="kw">in</span> range(0, 16, 4):  <span class="cm"># 分4个 minibatch</span>
+        idx = indices[start:start+4]
+        <span class="cm"># ... 用这4个样本算 loss → backward</span></pre>
+    <p>同一批 16 个架构 × 4 epochs = <b>16 次梯度更新</b><br>每次 minibatch=4，每次打乱顺序不同</p>
+  </div>
+</div>
+
+<!-- ====== 7. GAE ====== -->
+<h2 id="s7">7. GAE 优势计算详解</h2>
+<div class="file-ref" style="margin-bottom:12px;">📄 libs/ppo.py :: _compute_gae() [line 113]</div>
+
+<div class="data-flow">
+<b>⏮️ 从后往前累积（NAS 特化版）</b>：
+<pre style="margin:10px 0;">
+<span style="color:#a0aec0">/* 假设: B=16, T=7, 只有最后一步 t=6 有奖励 */</span>
+
+t=6 (最后一层):  δ₆ = R_final − V(s₆)                    <span style="color:#a0aec0">// 直接拿奖励减价值</span>
+                A₆ = δ₆                                  <span style="color:#a0aec0">// 最后一步，无后续</span>
+
+t=5:            δ₅ = γ·V(s₆) − V(s₅)                    <span style="color:#a0aec0">// 无奖励，纯价值差</span>
+                A₅ = δ₅ + γ·λ·A₆                        <span style="color:#a0aec0">// 把 t=6 的优势传过来</span>
+
+t=4:            δ₄ = γ·V(s₅) − V(s₄)
+                A₄ = δ₄ + γ·λ·A₅
+
+...以此类推...
+
+A = (A − mean(A)) / std(A)      <span style="color:#a0aec0">// 标准化到零均值单位方差</span>
+returns = A + V(s)               <span style="color:#a0aec0">// Critic 训练目标</span>
+
+<span style="color:#a0aec0">/* 直观理解: 找到好架构 → 所有参与决策的步骤都获得正优势
+             找到差架构 → 所有决策步骤都获得负优势
+             但每步的"贡献度"不同 (靠近最终决策的步信号更强) */</span>
+</pre>
+</div>
+
+<!-- ====== 8. 数据流 ====== -->
+<h2 id="s8">8. 数据流全览（Tensor 维度追踪）</h2>
+
+<div class="data-flow">
+<b>📐 从头到尾的变量流转</b>：
+
+<table style="width:100%; font-size:0.85em; margin-top:12px;">
+  <tr><th style="width:8%">阶段</th><th style="width:18%">变量</th><th style="width:12%">维度/类型</th><th style="width:20%">来源</th><th>去向</th></tr>
+
+  <tr style="background:#ebf4ff;">
+    <td rowspan="5"><b>① 采样</b></td>
+    <td>architectures</td><td>list[16] of list[7]</td><td>controller.forward(16)</td><td>评估 → 奖励 → GAE → PPO</td>
+  </tr>
+  <tr style="background:#ebf4ff;"><td>log_probs</td><td>(16, 7)</td><td>每步 Categorical.log_prob 之和</td><td>PPO 更新 (old_log_probs)</td></tr>
+  <tr style="background:#ebf4ff;"><td>values</td><td>(16, 7)</td><td>critic(h_t) 每步输出</td><td>GAE 计算</td></tr>
+  <tr style="background:#ebf4ff;"><td>entropies</td><td>(16, 7)</td><td>每步 Categorical.entropy 之和</td><td>统计 + PPO 总损失</td></tr>
+  <tr style="background:#ebf4ff;"><td>actions</td><td>list[16][7]</td><td>每步各头的动作索引</td><td>解码成架构 + PPO evaluate</td></tr>
+
+  <tr style="background:#fff5f5;">
+    <td rowspan="3"><b>② 评估</b></td>
+    <td>nmse</td><td>scalar (16个)</td><td>evaluate_architecture(arch)</td><td>→ compute_reward()</td></tr>
+  <tr style="background:#fff5f5;"><td>params</td><td>scalar (16个)</td><td>evaluate_architecture(arch)</td><td>→ compute_reward()</td></tr>
+  <tr style="background:#fff5f5;"><td>rewards</td><td>(16,)</td><td>compute_reward(nmse, params)</td><td>→ GAE _compute_gae()</td></tr>
+
+  <tr style="background:#f0fff4;">
+    <td rowspan="2"><b>③ GAE</b></td>
+    <td>advantages</td><td>(16, 7)</td><td>_compute_gae(rewards, values)</td><td>→ _ppo_update (Actor loss)</td></tr>
+  <tr style="background:#f0fff4;"><td>returns</td><td>(16, 7)</td><td>_compute_gae(rewards, values)</td><td>→ _ppo_update (Critic loss)</td></tr>
+
+  <tr style="background:#faf5ff;">
+    <td rowspan="3"><b>④ PPO</b></td>
+    <td>new_log_probs</td><td>(4, 7) 每batch</td><td>controller.evaluate() 重算</td><td>→ ratio → Actor loss</td></tr>
+  <tr style="background:#faf5ff;"><td>new_values</td><td>(4, 7) 每batch</td><td>controller.evaluate() 重算</td><td>→ MSE(returns) → Critic loss</td></tr>
+  <tr style="background:#faf5ff;"><td>loss</td><td>scalar</td><td>actor + critic + entropy</td><td>→ backward → Controller 参数更新</td></tr>
+</table>
+</div>
+
+<!-- ====== 9. 文件映射表 ====== -->
+<h2 id="s9">9. 文件-类-函数映射表</h2>
+
+<table class="file-map">
+  <tr><th>文件</th><th>类/函数</th><th>行号</th><th>职责</th></tr>
+  <tr>
+    <td class="file-col" rowspan="3">main.py</td>
+    <td>parse_args()</td><td>42</td><td>命令行参数解析</td>
+  </tr>
+  <tr><td>load_config()</td><td>61</td><td>加载 YAML 配置</td></tr>
+  <tr><td>run_search()</td><td>75</td><td>创建 NASEnvironment → 启动搜索</td></tr>
+
+  <tr>
+    <td class="file-col" rowspan="6">libs/environment.py</td>
+    <td>NASEnvironment.__init__()</td><td>30</td><td>初始化 Controller + PPOTrainer + Pareto</td>
+  </tr>
+  <tr><td>NASEnvironment.run()</td><td>68</td><td><b>主循环</b>: for it in range(500): train_one_iteration</td>
+  </tr>
+  <tr><td>NASEnvironment._log()</td><td>116</td><td>控制台日志输出</td>
+  </tr>
+  <tr><td>NASEnvironment.save_checkpoint()</td><td>128</td><td>保存模型 checkpoint</td>
+  </tr>
+  <tr><td>NASEnvironment.load_checkpoint()</td><td>133</td><td>加载 checkpoint 恢复训练</td>
+  </tr>
+  <tr><td>NASEnvironment.save_results()</td><td>138</td><td>保存 Pareto 前沿 + 训练统计到 JSON</td>
+  </tr>
+
+  <tr>
+    <td class="file-col" rowspan="5">libs/ppo.py</td>
+    <td>PPOTrainer.__init__()</td><td>26</td><td>初始化 Adam 优化器</td>
+  </tr>
+  <tr><td>PPOTrainer.train_one_iteration()</td><td>41</td><td><b>核心</b>: ①采样→②评估→③奖励→④GAE→⑤PPO更新</td>
+  </tr>
+  <tr><td>PPOTrainer._compute_gae()</td><td>113</td><td>GAE 优势计算（从后往前累积）</td>
+  </tr>
+  <tr><td>PPOTrainer._ppo_update()</td><td>153</td><td>PPO 损失计算 + 梯度更新（打乱 minibatch）</td>
+  </tr>
+  <tr><td>PPOTrainer.save() / load()</td><td>231</td><td>模型持久化</td>
+  </tr>
+
+  <tr>
+    <td class="file-col" rowspan="2">libs/reward.py</td>
+    <td>compute_reward()</td><td>19</td><td>奖励计算：R = -nmse − w·(params/target)</td>
+  </tr>
+  <tr><td>ParetoFront</td><td>64</td><td>Pareto 前沿维护（支配判断、增删）</td>
+  </tr>
+
+  <tr>
+    <td class="file-col" rowspan="4">libs/model/controller.py</td>
+    <td>Controller.__init__()</td><td>37</td><td>构建 LSTM + Actor/Critic 头</td>
+  </tr>
+  <tr><td>Controller.forward()</td><td>92</td><td>采样架构（逐时间步生成）</td>
+  </tr>
+  <tr><td>Controller.evaluate()</td><td>225</td><td>重新推理已有架构（PPO 更新用）</td>
+  </tr>
+  <tr><td>Controller.set_temperature()</td><td>307</td><td>调整探索温度</td>
+  </tr>
+
+  <tr>
+    <td class="file-col" rowspan="6">libs/model/search_space.py</td>
+    <td>LAYER_TYPES</td><td>31</td><td>7 层结构定义</td>
+  </tr>
+  <tr><td>KERNEL_SIZES / CONV_TYPES / ...</td><td>22-25</td><td>搜索空间各维度选项</td>
+  </tr>
+  <tr><td>get_action_dims()</td><td>38</td><td>返回每层各头的选项数</td>
+  </tr>
+  <tr><td>decode_actions()</td><td>51</td><td>动作索引 → 层配置 dict</td>
+  </tr>
+  <tr><td>encode_layer_action()</td><td>84</td><td>层配置 → 21 维 one-hot 特征</td>
+  </tr>
+  <tr><td>architecture_to_str() / estimate_params()</td><td>139</td><td>辅助函数</td>
+  </tr>
+
+  <tr>
+    <td class="file-col" rowspan="3">libs/model/dpd_model.py</td>
+    <td>DPDModel</td><td>30</td><td>DPD 模型（占位/真实实现）</td>
+  </tr>
+  <tr><td>build_model()</td><td>103</td><td>架构 → DPDModel 实例</td>
+  </tr>
+  <tr><td>evaluate_architecture()</td><td>139</td><td>一站式: 构建→训练→评估→返回 metrics</td>
+  </tr>
+</table>
+
+<p style="text-align:center; color:var(--grey); margin-top:40px; padding-bottom:40px;">
+流程图生成于 2026-06-04 · PPO-NAS Research Project<br>
+文件总数: 11 个 Python 文件 · 核心代码 ~1200 行
+</p>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,98 @@
+# ============================================================================
+# PPO-NAS 配置文件
+# ============================================================================
+# 修改此文件来调整搜索参数，无需改代码
+# ============================================================================
+
+# ---- 全局设置 ----
+global:
+  phase: 1               # 1=软参搜索, 2=量化位宽(预留)
+  seed: 42               # 随机种子
+  device: auto           # "cuda" / "cpu" / "auto"
+  output_dir: output
+  log_interval: 5        # 每 N 轮打印统计信息
+  save_interval: 10      # 每 N 轮保存一次 checkpoint (调小防 Ctrl+C 丢数据)
+
+# ---- 控制器（Actor-Critic LSTM）----
+controller:
+  hidden_dim: 128        # LSTM 隐藏层维度
+  num_layers: 2          # LSTM 层数
+  dropout: 0.1
+
+# ---- PPO 训练参数 ----
+ppo:
+  rollouts_per_iter: 16   # 每轮采样多少个架构
+  ppo_epochs: 4           # 每轮 PPO 更新几次
+  mini_batch_size: 4      # 小批量大小
+  clip_epsilon: 0.2       # PPO clip 范围
+  gamma: 0.99             # 折扣因子
+  gae_lambda: 0.95        # GAE λ
+  lr: 3.0e-4              # 学习率
+  value_loss_coef: 0.5    # Critic 损失权重
+  entropy_coef: 0.02      # 熵正则化系数（翻倍鼓励探索）
+  max_grad_norm: 0.5      # 梯度裁剪
+  total_iterations: 200   # 总迭代轮数 (32×200=6400架构)
+  temp_init: 2.0           # 初始采样温度 (高温→大量探索)
+  temp_final: 0.5          # 最终采样温度 (保留一定随机性)
+
+# ---- 奖励函数 ----
+# reward_type 可选:
+#   "simple"  - 简单线性: R = -res × acc_weight − param_weight × (params / target_params)
+#   "adf"     - 退火期望函数: R = (-res) × acc_weight − adf_penalty
+#
+# res = 残差平均功率谱密度 (dB), 越小越好
+#   PIM基线~22dB | 差~18dB | 一般~10dB | 可用<5dB
+# 基准模型~20K参数
+reward:
+  type: simple             # 当前策略
+
+  # ── simple 参数 ──
+  acc_weight: 3.0          # 性能权重 (放大 res 差距, 1dB→3分)
+  target_params: 20000     # 目标参数量
+
+  # param_weight 自动退火: 前期全力找低 res, 后期逐步收紧参数量
+  param_weight_init: 0.0              # 初始 (不管参数量)
+  param_weight_final: 0.1             # 最终 (正常约束)
+  param_weight_anneal_start: 50       # 第 50 轮开始退火
+  param_weight_anneal_iters: 150      # 再持续 150 轮 (第 200 轮到底)
+
+  # ── ADF 参数 (type: adf 时生效) ──
+  adf_tau_init: 30000
+  adf_tau_final: 15000
+  adf_delta_init: 30000
+  adf_delta_final: 5000
+  adf_penalty_slope: 0.5
+
+# ---- 评估设置 ----
+evaluation:
+  mock: true              # true=模拟评估, false=真实训练
+  short_epochs: 300
+  full_epochs: 1000
+
+# ---- Warm Start: 注入已知好架构 ----
+# 把你的基线模型 7 层配置填在这里 (按 L1→L7 顺序)
+# 搜索开始前会先评估这个架构, 加入 Pareto 前沿作为参考锚点
+warm_start:
+  enabled: false          # 改成 true 启用
+  # 示例: 全部 grouped, kernel=15, spline=16
+  # architecture:
+  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
+  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
+  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
+  #   - {type: lut, spline: 16}
+  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
+  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
+  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
+
+# ---- 搜索加速（可选）----
+nosh:
+  enabled: false
+  stages: [50, 150, 300]
+
+weight_transfer:
+  enabled: false
+  cache_size: 20
+
+# ---- 搜索空间开关 ----
+# 临时关掉 skip 来验证它是否影响搜索效果
+# (在 search_space.py 里手动改 CONV_TYPES 列表)

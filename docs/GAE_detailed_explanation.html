@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GAE 优势计算：从奖励到梯度的完整推导</title>
+<style>
+  :root {
+    --blue:#2b6cb0; --red:#e53e3e; --green:#38a169; --yellow:#d69e2e;
+    --purple:#6b46c1; --orange:#dd6b20; --teal:#319795; --grey:#718096;
+    --bg:#f7fafc; --card:#fff; --text:#1a202c; --border:#e2e8f0; --code-bg:#1a202c;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;background:var(--bg);color:var(--text);line-height:1.85}
+  .container{max-width:1100px;margin:0 auto;padding:30px 20px}
+  h1{text-align:center;color:var(--blue);font-size:2em;margin-bottom:4px}
+  .sub{text-align:center;color:var(--grey);margin-bottom:30px;font-size:.9em}
+  h2{color:var(--blue);border-left:4px solid var(--blue);padding:6px 16px;background:#ebf4ff;border-radius:0 6px 6px 0;margin:48px 0 18px;font-size:1.3em}
+  h3{color:#2d3748;margin:24px 0 8px;font-size:1.08em}
+  h4{margin:16px 0 4px;color:var(--grey);font-size:.92em}
+  .card{background:var(--card);border-radius:10px;padding:20px 26px;margin:14px 0;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid var(--border)}
+  pre{background:var(--code-bg);color:#e2e8f0;padding:14px 18px;border-radius:8px;font-size:.82em;line-height:1.6;overflow-x:auto;margin:10px 0}
+  pre .kw{color:#fc8181} pre .fn{color:#68d391} pre .cm{color:#a0aec0} pre .num{color:#f6ad55} pre .str{color:#fbd38d}
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:.88em}
+  th,td{padding:8px 12px;text-align:left;border:1px solid var(--border)}
+  th{background:#edf2f7;font-weight:600} tr:nth-child(even){background:#f7fafc}
+  .tag{display:inline-block;padding:1px 8px;border-radius:3px;font-size:.78em;font-weight:600}
+  .tb{background:#bee3f8;color:#2b6cb0} .tr{background:#fed7d7;color:#9b2c2c}
+  .tg{background:#c6f6d5;color:#276749} .tp{background:#e9d8fd;color:#553c9a}
+  .hl{border-left:4px solid var(--blue);background:#ebf4ff;padding:12px 18px;margin:12px 0;border-radius:0 6px 6px 0}
+  .hl.r{border-left-color:var(--red);background:#fff5f5}
+  .hl.g{border-left-color:var(--green);background:#f0fff4}
+  .hl.o{border-left-color:var(--orange);background:#fffaf0}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .toc{background:var(--card);border-radius:10px;padding:20px 28px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid var(--border)}
+  .toc ul{list-style:none;padding:0;columns:2} .toc li{padding:3px 0}
+  .toc a{color:var(--blue);text-decoration:none} .toc a:hover{text-decoration:underline}
+  .flow{background:linear-gradient(135deg,#1a202c,#2d3748);border-radius:14px;padding:18px 14px;margin:14px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;overflow-x:auto}
+  .fb{color:#fff;border-radius:10px;padding:14px 18px;text-align:center;min-width:90px;flex-shrink:0}
+  .fb .t{font-weight:700;font-size:.95em} .fb .s{font-size:.72em;opacity:.85;margin-top:3px}
+  .ar{color:#a0aec0;font-size:1.4em;flex-shrink:0;font-weight:bold}
+  .step-box{border:2px solid var(--border);border-radius:10px;padding:14px 18px;margin:8px 0;background:#f7fafc}
+  .step-box.t6{border-color:var(--red);background:#fff5f5}
+  .step-box.t0{border-color:var(--green);background:#f0fff4}
+  @media(max-width:768px){.g2{grid-template-columns:1fr}.toc ul{columns:1}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>📐 GAE 优势计算：从奖励到梯度的完整推导</h1>
+<p class="sub">回答核心问题：模型拿到了 16 个标量奖励，怎么知道第 3 步选 grouped 是对的还是错的？<br>生成于 2026-06-05</p>
+
+<div class="toc">
+<b>📑 目录</b>
+<ul>
+  <li><a href="#s1">1. 问题设定：NAS 的信度分配困境</a></li>
+  <li><a href="#s2">2. 核心概念词典</a></li>
+  <li><a href="#s3">3. GAE 计算过程：逐步走查</a></li>
+  <li><a href="#s4">4. 为什么这样计算：从 TD 到 GAE</a></li>
+  <li><a href="#s5">5. 奖励函数如何决定"对错"</a></li>
+  <li><a href="#s6">6. 从 GAE 到梯度：模型如何调整</a></li>
+  <li><a href="#s7">7. 完整数值走查</a></li>
+  <li><a href="#s8">8. 总结：全链路追踪</a></li>
+</ul>
+</div>
+
+<!-- ====== 1 ====== -->
+<h2 id="s1">1. 问题设定：NAS 的信度分配困境</h2>
+
+<div class="card">
+<h3>场景</h3>
+<p>Controller 分 7 步生成一个架构，最后得到一个标量奖励 R = 31.88：</p>
+
+<pre>t=0: 选 L1 → [grouped, kernel=3, init=center_spike]
+t=1: 选 L2 → [1x1,    kernel=1, init=xavier]
+t=2: 选 L3 → [grouped, kernel=7, init=kaiming]
+t=3: 选 L4 → [LUT, spline=16]
+t=4: 选 L5 → [grouped, kernel=5, init=center_spike]
+t=5: 选 L6 → [1x1,    kernel=1, init=xavier]
+t=6: 选 L7 → [grouped, kernel=3, init=center_spike]
+
+                      ↓
+                R = 31.88  ← 整个架构的功劳，但 7 步各贡献了多少？</pre>
+
+<div class="hl r">
+<b>困境</b>：L3 选了 kernel=7，这是好是坏？L4 选了 spline=16，贡献了多少？L2 选了 1x1 是否正确？<br>
+<b>如果没有办法分配信度，Controller 只能瞎猜。GAE 就是解决这个问题的。</b>
+</div>
+</div>
+
+<!-- ====== 2 ====== -->
+<h2 id="s2">2. 核心概念词典</h2>
+
+<div class="card">
+<h3>2.1 五个核心概念的日常类比</h3>
+
+<div class="hl">
+<b>你去打游戏，打到第 3 关（状态 s₃）：</b><br><br>
+<table>
+  <tr><th>概念</th><th>类比</th><th>符号</th><th>值</th></tr>
+  <tr><td><b>Critic 估值</b></td><td>"我猜第3关大概能拿30分"</td><td>V(s₃)</td><td>30</td></tr>
+  <tr><td><b>实际奖励</b></td><td>"实际拿到了35分"</td><td>r</td><td>35</td></tr>
+  <tr><td><b>TD-Error</b></td><td>"嘿，比我预期多了5分！"（惊喜）</td><td>δ₃</td><td>+5</td></tr>
+  <tr><td><b>Advantage</b></td><td>"仔细一想，我第3关的操作整体比平均好8分"</td><td>A₃</td><td>+8</td></tr>
+  <tr><td><b>Return</b></td><td>"所以第3关实际值38分，不是30分"</td><td>returns₃</td><td>38</td></tr>
+</table>
+<p>→ <b>Critic 学到</b>：下次估高一点到 38<br>→ <b>Actor 学到</b>：第 3 关做的动作不错，以后多做</p>
+</div>
+</div>
+
+<div class="card">
+<h3>2.2 精确定义</h3>
+
+<h4>Reward (r) — 奖励</h4>
+<div class="hl g">
+<b>定义</b>：执行完整个动作序列后，环境给的标量分数<br>
+<b>NAS 中</b>：<code>r = compute_reward(nmse, params)</code><br>
+<b>时机</b>：只在最后一步给，中间步骤 r=0<br>
+<b>地位</b>：<b>唯一衡量"好坏"的标尺</b>
+</div>
+
+<h4>State Value V(s) — 状态价值</h4>
+<div class="hl">
+<b>定义</b>：从当前状态 s_t 出发，按当前策略走，未来能拿到的期望累积奖励<br>
+<b>NAS 中</b>：<code>V(s_t) = critic(h_t)</code> — Critic 网络预测的标量<br>
+<b>本质</b>：<b>Critic 的猜测</b>——"我觉得现在大概值多少钱"<br>
+<b>关键</b>：一开始是随机猜测，随着训练越来越准
+</div>
+
+<h4>TD-Error (δ) — 时序差分误差</h4>
+<div class="hl r">
+<b>公式</b>：<code>δ_t = r_{t+1} + γ·V(s_{t+1}) − V(s_t)</code><br>
+<b>含义</b>：<b>"出乎意料"的程度</b><br>
+δ > 0 → V(s_t) 低估了 → 这一步比预期好<br>
+δ < 0 → V(s_t) 高估了 → 这一步比预期差<br>
+<b>代码</b>：<code>ppo.py:138/141</code>
+</div>
+
+<h4>Advantage (A) — 优势函数</h4>
+<div class="hl r">
+<b>公式</b>：<code>A_t = Σ(γλ)^l · δ_{t+l}</code> (GAE 累积)<br>
+<b>含义</b>：某个动作相对于平均水平的 <b>"超额收益"</b><br>
+A > 0 → 这个动作比平均水平好 → Actor 应该多做<br>
+A < 0 → 这个动作比平均水平差 → Actor 应该少做<br>
+<b>代码</b>：<code>ppo.py:143-144</code>
+</div>
+
+<h4>Return / R_target — 回报</h4>
+<div class="hl g">
+<b>公式</b>：<code>returns = A + V(s)</code><br>
+<b>含义</b>：这个状态的 <b>"实际价值"</b> = 估值 + 超额<br>
+<b>用途</b>：<b>Critic 的训练标签</b>——"你的估值应该是这个，不是原始 V(s)"<br>
+<b>代码</b>：<code>ppo.py:147</code>
+</div>
+
+<h4>γ 和 λ</h4>
+<table>
+  <tr><th>参数</th><th>值</th><th>作用</th><th>极端值</th></tr>
+  <tr><td>γ (gamma)</td><td>0.99</td><td>未来奖励的折扣率</td><td>0=短视, 1=远视</td></tr>
+  <tr><td>λ (lambda)</td><td>0.95</td><td>偏差-方差权衡</td><td>0=纯TD, 1=纯MC</td></tr>
+</table>
+</div>
+
+<!-- ====== 3 ====== -->
+<h2 id="s3">3. GAE 计算过程：逐步走查</h2>
+
+<div class="card">
+<h3>3.1 NAS 特化：中间步骤奖励为 0</h3>
+
+<pre><span class="cm">标准RL: r_0, r_1, r_2, r_3, r_4, r_5, r_6  (每步都有)</span>
+<span class="cm">NAS:    </span>0,   0,   0,   0,   0,   0, <span class="num">31.88</span>  <span class="cm">(只有最后一步有)</span></pre>
+
+<p>所以 GAE 公式被简化为：</p>
+<pre>t=6:  δ₆ = r_final − V(s₆)           <span class="cm">直接奖励 vs 估值</span>
+     A₆ = δ₆
+
+t&lt6:  δ_t = γ·V(s_{t+1}) − V(s_t)      <span class="cm">纯价值差</span>
+     A_t = δ_t + γ·λ·A_{t+1}          <span class="cm">累积未来的优势</span></pre>
+</div>
+
+<div class="card">
+<h3>3.2 数值走查</h3>
+<p>假设 V = [28, 29, 30, 29, 30, 29, 30]，R = 31.88：</p>
+
+<div class="step-box t6">
+<b>t=6 (L7):</b> δ₆ = 31.88 − 30.0 = <b>+1.88</b> | A₆ = <b>+1.88</b><br>
+最后一层的操作比 Critic 预期好
+</div>
+
+<div class="step-box">
+<b>t=5 (L6):</b> δ₅ = 0.99×30.0 − 29.0 = <b>+0.70</b> | A₅ = 0.70 + 0.94×1.88 = <b>+2.47</b><br>
+状态变好了，而且未来有正优势传过来
+</div>
+
+<div class="step-box">
+<b>t=4 (L5):</b> δ₄ = 0.99×29.0 − 30.0 = <b>−0.29</b> | A₄ = −0.29 + 0.94×2.47 = <b>+2.03</b><br>
+一步来看状态变差了，但继承了前面的正优势
+</div>
+
+<div class="step-box">
+<b>t=3 (L4):</b> δ₃ = <b>+0.70</b> | A₃ = <b>+2.61</b>
+</div>
+
+<div class="step-box">
+<b>t=2 (L3):</b> δ₂ = <b>−0.29</b> | A₂ = <b>+2.16</b>
+</div>
+
+<div class="step-box">
+<b>t=1 (L2):</b> δ₁ = <b>+0.70</b> | A₁ = <b>+2.73</b>
+</div>
+
+<div class="step-box t0">
+<b>t=0 (L1):</b> δ₀ = <b>+0.71</b> | A₀ = <b>+3.28</b><br>
+所有步优势都>0 → 每个决策步都沾了"好架构"的光
+</div>
+
+<h4>关键观察</h4>
+<p><b>所有 A_t 都 > 0</b>：因为最终奖励 31.88 高于所有 V(s)，好消息被整条链共享。</p>
+<p><b>A₀ > A₆</b>：早期步骤也分到了充分的优势（γλ=0.94 衰减很慢，0.94⁶=0.69）。</p>
+<p><b>δ₄=−0.29 但 A₄=+2.03</b>：一步不好没关系，后面的好结果救了它。</p>
+</div>
+
+<div class="card">
+<h3>3.3 标准化</h3>
+<pre>A = (A − mean_batch(A)) / (std_batch(A) + 1e-8)   <span class="cm">ppo.py:147</span></pre>
+<p>标准化后，批次内一半 A 为正（"做对了"），一半为负（"做错了"）——让正负梯度信号平衡，训练更稳定。</p>
+</div>
+
+<!-- ====== 4 ====== -->
+<h2 id="s4">4. 为什么这样计算：从 TD 到 GAE</h2>
+
+<div class="card">
+<h3>4.1 三种信度分配方式的对比</h3>
+
+<table>
+  <tr><th>方式</th><th>做法</th><th>优点</th><th>致命问题</th></tr>
+  <tr>
+    <td><b>均分</b></td>
+    <td>Aₜ = R/7</td>
+    <td>简单</td>
+    <td class="tr">选 1x1 和选 grouped 拿到同样的反馈 → Controller 无法区分哪些决策真正有价值</td>
+  </tr>
+  <tr>
+    <td><b>纯 TD (λ=0)</b></td>
+    <td>Aₜ = δₜ</td>
+    <td>低方差</td>
+    <td class="tr">只看眼前 surprise，看不到"第6步让奖励暴涨"这个全局事实 → 短视</td>
+  </tr>
+  <tr>
+    <td><b>Monte Carlo (λ=1)</b></td>
+    <td>Aₜ = R − V(sₜ)</td>
+    <td>无偏</td>
+    <td class="tr">方差极大——nmse测量噪声全传导到每一步 → 训练振荡</td>
+  </tr>
+  <tr style="background:#f0fff4">
+    <td><b>GAE (λ=0.95)</b></td>
+    <td>Aₜ = Σ(γλ)ˡ·δₜ₊ₗ</td>
+    <td>平衡</td>
+    <td class="tg">信息传到底 + 噪声被指数衰减平滑</td>
+  </tr>
+</table>
+</div>
+
+<div class="card">
+<h3>4.2 λ 如何控制权衡</h3>
+
+<pre>A₀ = δ₀ + (γλ)·δ₁ + (γλ)²·δ₂ + (γλ)³·δ₃ + (γλ)⁴·δ₄ + (γλ)⁵·δ₅ + (γλ)⁶·δ₆
+      权重=1   权重=.94  权重=.88  权重=.83  权重=.78  权重=.73  权重=.69</pre>
+
+<p><b>λ=0.95 的精妙之处</b>：越远的 δ 权重越小，但衰减很慢。第六步的 δ₆ 仍然有 69% 的权重传到第一步 —— 既保证了"最终奖励是好是坏"这个信息能被所有步骤接收到，又不会让评估噪声完全主导。</p>
+</div>
+
+<div class="card">
+<h3>4.3 为什么用 V(s) 做 baseline 而不是直接用 reward</h3>
+
+<pre><span class="cm">架构 A: R=31.88, 架构 B: R=26.00</span>
+直接用 R: A 每步都正反馈, B 每步都正反馈 → 都"鼓励"
+用 GAE:  A 的 V(s)≈28~30, R=31.88 → A>0 ✅
+         B 的 V(s)≈28~30, R=26.00 → A&lt0 ❌ (估值给高了, 最终没达到)</pre>
+
+<p>V(s) 提供了<b>依赖上下文的 baseline</b>——"这个状态本来能拿多少"是参照系，只有<b>超过预期的部分</b>才算优势。</p>
+</div>
+
+<!-- ====== 5 ====== -->
+<h2 id="s5">5. 奖励函数如何决定"对错"</h2>
+
+<div class="card">
+<h3>5.1 奖励函数 = "好坏"的唯一定义</h3>
+
+<pre><span class="kw">def</span> <span class="fn">compute_reward</span>(nmse, num_params, config):
+    perf_score = -nmse * <span class="num">1.0</span>              <span class="cm"># NMSE越小 → 得分越高</span>
+    param_penalty = <span class="num">0.1</span> * (num_params / <span class="num">100000</span>)
+    <span class="kw">return</span> perf_score - param_penalty</pre>
+
+<table>
+  <tr><th>R 值</th><th>对应架构</th><th>判定</th><th>→ GAE 效应</th></tr>
+  <tr style="background:#f0fff4"><td>>30</td><td>nmse好 + params合理</td><td><b>好架构</b></td><td>A>0 → Actor多做这类的决策</td></tr>
+  <tr style="background:#fff5f5"><td><25</td><td>nmse差 或 params太大</td><td><b>差架构</b></td><td>A<0 → Actor少做这类的决策</td></tr>
+</table>
+</div>
+
+<div class="card">
+<h3>5.2 param_weight 如何影响搜索方向</h3>
+
+<div class="hl o">
+<b>架构 Z: nmse=−32, params=300000</b><br>
+param_weight=0.1 → R = 32 − 0.3 = <b>31.70</b> (相当好，会追)<br>
+param_weight=0.5 → R = 32 − 1.5 = <b>30.50</b> (没那么好，不追了)<br><br>
+<b>参数权重的选择直接影响了"大模型是否值得追"</b><br>
+太高 → Controller 倾向小模型（性能略差）；太低 → 无脑堆参数
+</div>
+</div>
+
+<div class="card">
+<h3>5.3 奖励如何转化为对每一步的"对错判定"</h3>
+
+<div class="flow">
+  <div class="fb" style="background:linear-gradient(135deg,#276749,#38a169)"><div class="t">评估</div><div class="s">nmse, params</div></div>
+  <div class="ar">→</div>
+  <div class="fb" style="background:linear-gradient(135deg,#9c4221,#dd6b20)"><div class="t">compute_reward</div><div class="s">16个标量r</div></div>
+  <div class="ar">→</div>
+  <div class="fb" style="background:linear-gradient(135deg,#553c9a,#805ad5)"><div class="t">GAE</div><div class="s">112个优势值<br>(16×7)</div></div>
+  <div class="ar">→</div>
+  <div class="fb" style="background:linear-gradient(135deg,#2b6cb0,#3182ce)"><div class="t">actor_loss</div><div class="s">A>0→多做<br>A<0→少做</div></div>
+</div>
+
+<p style="margin-top:10px"><b>所有关于"好坏"的信息都压缩进了 16 个标量 r，然后 GAE 把它们展开成 16×7=112 个对每一步的指导信号。</b></p>
+</div>
+
+<!-- ====== 6 ====== -->
+<h2 id="s6">6. 从 GAE 到梯度：模型如何调整</h2>
+
+<div class="card">
+<h3>6.1 Actor 怎么"知道往哪个方向调"</h3>
+
+<div class="g2">
+<div>
+<h4>好样本 (A > 0)</h4>
+<pre>第3步选了 grouped+kernel=3
+A₃ = +2.16
+
+actor_loss 对 log_prob
+的梯度方向: <span class="tg">"多做这个动作"</span>
+
+→ P(grouped,k=3) ↑</pre>
+</div>
+<div>
+<h4>差样本 (A < 0)</h4>
+<pre>第3步选了 grouped+kernel=9
+A₃ = -1.50
+
+actor_loss 对 log_prob
+的梯度方向: <span class="tr">"少做这个动作"</span>
+
+→ P(grouped,k=9) ↓</pre>
+</div>
+</div>
+
+<p style="margin-top:12px">一个 batch 里好样本和差样本的梯度加在一起 → Actor 头参数往"增加好动作概率、减少差动作概率"的方向移动。</p>
+</div>
+
+<div class="card">
+<h3>6.2 Critic 怎么变准</h3>
+
+<pre>returns₃ = A₃ + V₃ = 2.16 + 30 = <b>32.16</b>   ← "L3 实际值 32.16"
+V_new(L3) = <b>29.5</b>                         ← "Critic 猜了 29.5"
+
+critic_loss = MSE(29.5, 32.16) → backward → Critic头参数调整
+→ 下次遇到类似状态 V 会估高一点</pre>
+</div>
+
+<div class="card">
+<h3>6.3 Actor-Critic 互促循环</h3>
+
+<div class="flow">
+  <div class="fb" style="background:linear-gradient(135deg,#2b6cb0,#3182ce)"><div class="t">Actor 采样</div><div class="s">更好的架构</div></div>
+  <div class="ar">→</div>
+  <div class="fb" style="background:linear-gradient(135deg,#276749,#38a169)"><div class="t">更高奖励</div><div class="s">GAE 优势更准</div></div>
+  <div class="ar">→</div>
+  <div class="fb" style="background:linear-gradient(135deg,#553c9a,#805ad5)"><div class="t">Critic 学习</div><div class="s">V(s) 越来越准</div></div>
+  <div class="ar">→</div>
+  <div class="fb" style="background:linear-gradient(135deg,#2b6cb0,#3182ce)"><div class="t">Actor 继续改进</div><div class="s">优势估计更可靠</div></div>
+</div>
+</div>
+
+<!-- ====== 7 ====== -->
+<h2 id="s7">7. 完整数值走查</h2>
+
+<div class="card">
+<h3>7.1 架构评估</h3>
+<pre>架构: L1(grouped,k=3,cs)→L2(1x1,k=1,x)→L3(grouped,k=7,kai)→L4(LUT,sp=16)
+     →L5(grouped,k=5,cs)→L6(1x1,k=1,x)→L7(grouped,k=3,cs)
+
+nmse=-32.5, params=110000  →  R = 32.5 − 0.11 = <b>32.39</b></pre>
+</div>
+
+<div class="card">
+<h3>7.2 GAE 计算</h3>
+<table>
+  <tr><th>步</th><th>V(s)</th><th>r</th><th>δ</th><th>A (累积)</th><th>returns=A+V</th></tr>
+  <tr style="background:#fff5f5"><td>t=6</td><td>29.5</td><td>32.39</td><td>+2.89</td><td>+2.89</td><td><b>32.39</b> ← =reward!</td></tr>
+  <tr><td>t=5</td><td>29.0</td><td>0</td><td>+0.205</td><td>+2.92</td><td>32.92</td></tr>
+  <tr><td>t=4</td><td>29.5</td><td>0</td><td>−0.29</td><td>+2.46</td><td>32.74</td></tr>
+  <tr><td>t=3</td><td>28.5</td><td>0</td><td>+0.705</td><td>+3.02</td><td>31.52</td></tr>
+  <tr><td>t=2</td><td>29.0</td><td>0</td><td>−0.285</td><td>+2.55</td><td>31.48</td></tr>
+  <tr><td>t=1</td><td>28.0</td><td>0</td><td>+0.71</td><td>+3.11</td><td>31.04</td></tr>
+  <tr style="background:#f0fff4"><td>t=0</td><td>27.5</td><td>0</td><td>+0.22</td><td>+3.14</td><td>30.95</td></tr>
+</table>
+<p><b>验证</b>：t=6 的 returns = 32.39 = reward ✅ → 最后一步的 return 恒等于实际奖励。</p>
+</div>
+
+<!-- ====== 8 ====== -->
+<h2 id="s8">8. 总结：全链路追踪</h2>
+
+<div class="card">
+<pre style="font-size:.83em">
+┌──────────────────────────────────────────────────────────────────────┐
+│              从"好架构"到"参数更新"的完整链路                         │
+│                                                                      │
+│  evaluate_architecture(arch) → nmse=−32.5, params=110000             │
+│      │                                                               │
+│      ▼                                                               │
+│  compute_reward: R = 32.5 − 0.11 = 32.39                             │
+│  → <b>"32.39 分，是个好架构"</b>                                          │
+│      │                                                               │
+│      ▼                                                               │
+│  GAE: 把 32.39 沿 7 步时间轴反向分配                                  │
+│  A₀=3.14, A₁=3.11, A₂=2.55, A₃=3.02, A₄=2.46, A₅=2.92, A₆=2.89     │
+│  → <b>"第0步贡献了3.14，第3步贡献了3.02，第4步贡献了2.46..."</b>          │
+│      │                                                               │
+│      ▼                                                               │
+│  标准化: (A − mean_batch) / std_batch                                 │
+│  → 批次内比较，A>0的步→应多做，A&lt0的步→应少做                          │
+│      │                                                               │
+│      ▼                                                               │
+│  actor_loss = −mean(min(ratio×A, clip(ratio)×A))                     │
+│  → 对 A>0 的步，梯度推动 P(该动作)↑                                   │
+│  → 对 A&lt0 的步，梯度推动 P(该动作)↓                                   │
+│      │                                                               │
+│      ▼                                                               │
+│  loss.backward() → LSTM + Actor头 + Critic头 全部更新                │
+│  → <b>Controller 学会了"怎样的架构设计能拿到高分"</b>                   │
+│      │                                                               │
+│      ▼                                                               │
+│  下一轮采样：Controller 更倾向于生成高奖励架构的特征                   │
+└──────────────────────────────────────────────────────────────────────┘
+</pre>
+
+<div class="hl g" style="margin-top:16px">
+<b>核心答案</b>：模型不是直接被告知"第 3 步选 grouped 是对的"，而是通过<br>
+<b>奖励函数</b>（定义"什么算好"）→ <b>GAE</b>（将总分沿时间轴分解为每步的优势）→ <b>PPO</b>（将优势转化为梯度）<br>
+三层机制接力，最终实现"Controller 自动学会生成高奖励架构"。
+</div>
+</div>
+
+<p style="text-align:center;color:var(--grey);margin:40px 0">GAE 优势计算详解 · 生成于 2026-06-05</p>
+
+</div>
+</body>
+</html>

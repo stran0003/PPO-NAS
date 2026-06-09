@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PPO-NAS 前向过程完整详解</title>
+<style>
+  :root {
+    --blue:#2b6cb0; --red:#e53e3e; --green:#38a169; --yellow:#d69e2e;
+    --purple:#6b46c1; --orange:#dd6b20; --teal:#319795; --grey:#718096;
+    --bg:#f7fafc; --card:#fff; --text:#1a202c; --border:#e2e8f0;
+    --code-bg:#1a202c;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Noto Sans SC",sans-serif;background:var(--bg);color:var(--text);line-height:1.85}
+  .container{max-width:1200px;margin:0 auto;padding:30px 20px}
+  h1{text-align:center;color:var(--blue);font-size:2em;margin-bottom:4px}
+  .sub{text-align:center;color:var(--grey);margin-bottom:30px;font-size:.9em}
+  h2{color:var(--blue);border-left:4px solid var(--blue);padding:6px 16px;background:#ebf4ff;border-radius:0 6px 6px 0;margin:48px 0 18px;font-size:1.35em}
+  h3{color:#2d3748;margin:28px 0 10px;font-size:1.1em}
+  h4{margin:18px 0 6px;color:var(--grey);font-size:.95em}
+  .card{background:var(--card);border-radius:10px;padding:22px 28px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid var(--border)}
+  .flow-box{background:linear-gradient(135deg,#1a202c,#2d3748);border-radius:14px;padding:20px 16px;margin:16px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center;overflow-x:auto}
+  .fb{color:#fff;border-radius:10px;padding:16px 20px;text-align:center;min-width:100px;flex-shrink:0;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+  .fb.b{background:linear-gradient(135deg,#2b6cb0,#3182ce)}
+  .fb.r{background:linear-gradient(135deg,#e53e3e,#fc8181)}
+  .fb.g{background:linear-gradient(135deg,#276749,#38a169)}
+  .fb.p{background:linear-gradient(135deg,#553c9a,#805ad5)}
+  .fb.o{background:linear-gradient(135deg,#9c4221,#dd6b20)}
+  .fb.t{background:linear-gradient(135deg,#234e52,#319795)}
+  .fb .t{font-weight:700;font-size:1em}
+  .fb .s{font-size:.75em;opacity:.85;margin-top:4px}
+  .ar{color:#a0aec0;font-size:1.5em;flex-shrink:0;font-weight:bold}
+  pre{background:var(--code-bg);color:#e2e8f0;padding:14px 18px;border-radius:8px;font-size:.82em;line-height:1.6;overflow-x:auto;margin:10px 0}
+  pre .kw{color:#fc8181} pre .fn{color:#68d391} pre .cm{color:#a0aec0} pre .num{color:#f6ad55} pre .str{color:#fbd38d} pre .op{color:#f6ad55}
+  table{width:100%;border-collapse:collapse;margin:12px 0;font-size:.88em}
+  th,td{padding:8px 12px;text-align:left;border:1px solid var(--border)}
+  th{background:#edf2f7;font-weight:600}
+  tr:nth-child(even){background:#f7fafc}
+  .tag{display:inline-block;padding:1px 8px;border-radius:3px;font-size:.78em;font-weight:600}
+  .tb{background:#bee3f8;color:#2b6cb0} .tr{background:#fed7d7;color:#9b2c2c}
+  .tg{background:#c6f6d5;color:#276749} .tp{background:#e9d8fd;color:#553c9a}
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+  .hl{border-left:4px solid var(--blue);background:#ebf4ff;padding:12px 18px;margin:14px 0;border-radius:0 6px 6px 0}
+  .hl.r{border-left-color:var(--red);background:#fff5f5}
+  .hl.g{border-left-color:var(--green);background:#f0fff4}
+  .toc{background:var(--card);border-radius:10px;padding:20px 28px;margin:16px 0;box-shadow:0 1px 4px rgba(0,0,0,.06);border:1px solid var(--border)}
+  .toc ul{list-style:none;padding:0;columns:2}
+  .toc li{padding:3px 0} .toc a{color:var(--blue);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .grad-table td:first-child{font-family:monospace;font-weight:600}
+  .yes{color:var(--green);font-weight:bold} .no{color:var(--red)}
+  @media(max-width:768px){.g2,.g3{grid-template-columns:1fr}.toc ul{columns:1}.flow-box{flex-direction:column}.ar{transform:rotate(90deg)}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>🔬 PPO-NAS 前向过程完整详解</h1>
+<p class="sub">基于 libs/ppo.py · libs/model/controller.py · libs/reward.py · libs/environment.py<br>生成于 2026-06-05</p>
+
+<div class="toc">
+<b>📑 目录</b>
+<ul>
+  <li><a href="#s1">1. 总体框图</a></li>
+  <li><a href="#s2">2. 阶段一：采样 (forward)</a></li>
+  <li><a href="#s3">3. 阶段二：评估与奖励 ⭐</a></li>
+  <li><a href="#s4">4. 阶段三：GAE 优势计算</a></li>
+  <li><a href="#s5">5. 阶段四：PPO 更新循环</a></li>
+  <li><a href="#s6">6. 阶段五：反向传播与梯度流</a></li>
+  <li><a href="#s7">7. 完整迭代总结</a></li>
+</ul>
+</div>
+
+<!-- ====== 1. 总体框图 ====== -->
+<h2 id="s1">1. 总体框图</h2>
+
+<div class="flow-box">
+  <div class="fb b"><div class="t">Controller (θ)</div><div class="s">Actor-Critic LSTM<br>4个Actor头 + Critic头</div></div>
+  <div class="ar">→</div>
+  <div class="fb r"><div class="t">① 采样</div><div class="s">forward(16)<br>→ 16个架构<br>→ log_probs_old<br>→ values_old</div></div>
+  <div class="ar">→</div>
+  <div class="fb g"><div class="t">② 评估 & 奖励</div><div class="s">train(arch)<br>→ nmse, params<br>→ compute_reward()</div></div>
+  <div class="ar">→</div>
+  <div class="fb p"><div class="t">③ GAE</div><div class="s">从后往前累积<br>→ advantages<br>→ returns</div></div>
+  <div class="ar">→</div>
+  <div class="fb o"><div class="t">④ PPO 更新 ×4</div><div class="s">打乱→minibatch<br>evaluate()重算<br>→ loss.backward()</div></div>
+</div>
+
+<div class="hl">重复 500 次 → 搜索完成 → 输出 Pareto 前沿到 <code>output/pareto_front.json</code></div>
+
+<!-- ====== 2. 采样 ====== -->
+<h2 id="s2">2. 阶段一：采样 (forward)</h2>
+
+<div class="card">
+<h3>2.1 调用入口</h3>
+<p><b>代码</b>: <code>libs/ppo.py:57</code></p>
+<pre><span class="cm"># batch_size = rollouts_per_iter = 16</span>
+architectures, log_probs, values, entropies, actions = \
+    self.controller.<span class="fn">forward</span>(<span class="num">16</span>)</pre>
+</div>
+
+<div class="card">
+<h3>2.2 LSTM 时间步展开 (7步)</h3>
+
+<pre style="line-height:1.5">
+t=0 (L1线性):  start_token → LSTM → h₀
+  ├─ actor_conv(h₀):   Linear(128→2) → logits → softmax → P(conv) → sample → c₀
+  │     log_prob += log P(c₀)            <span class="cm"># 始终计入</span>
+  ├─ actor_kernel(h₀): Linear(128→5) → logits → softmax → P(kernel) → sample → k₀
+  │     log_prob += log P(k₀) × <span class="kw">mask</span>   <span class="cm"># 仅 grouped 时计入, 1x1→k₀=-1</span>
+  ├─ actor_init(h₀):   Linear(128→? ) → logits → softmax → P(init) → sample → i₀
+  │     log_prob += log P(i₀)            <span class="cm"># 始终计入</span>
+  └─ critic(h₀):       MLP(128→128→64→1) → V(s₀)
+
+  step_entropy = H(P_conv) + H(P_kernel)×mask + H(P_init)
+  step_log_prob = 上述三项log_prob之和
+
+t=1 (L2线性):  encode(arch[0], 21维) → LSTM → h₁ → 同上 ...
+
+t=3 (L4 LUT):  只采样 spline (1个分布)
+  step_log_prob = log P(spline)
+  step_entropy  = H(P_spline)
+
+t=4~6: 同 t=1~3 ...</pre>
+</div>
+
+<div class="card">
+<h3>2.3 输出张量</h3>
+<table>
+  <tr><th>变量</th><th>维度</th><th>含义</th></tr>
+  <tr><td>architectures</td><td>list[16] of list[7]</td><td>16个完整架构配置</td></tr>
+  <tr><td>log_probs</td><td>(16, 7)</td><td>每步采样动作的 log 概率 (pi_old)</td></tr>
+  <tr><td>values</td><td>(16, 7)</td><td>每步 Critic 估值 V(s)</td></tr>
+  <tr><td>entropies</td><td>(16, 7)</td><td>每步策略分布的熵</td></tr>
+  <tr><td>actions</td><td>list[16][7]</td><td>每步的动作索引 (仅用于evaluate时查表)</td></tr>
+</table>
+</div>
+
+<!-- ====== 3. 评估与奖励 ====== -->
+<h2 id="s3">3. 阶段二：评估与奖励 ⭐</h2>
+
+<div class="card">
+<h3>3.1 评估每个架构</h3>
+<p><b>代码</b>: <code>libs/ppo.py:61-77</code></p>
+<pre><span class="kw">for</span> arch <span class="kw">in</span> architectures:                 <span class="cm"># 16个架构逐个评估</span>
+    metrics = evaluate_architecture(arch)    <span class="cm"># 构建→训练→评估</span>
+    nmse = metrics[<span class="str">"nmse"</span>]               <span class="cm"># dB, 越小越好</span>
+    params = metrics[<span class="str">"num_params"</span>]
+    r = compute_reward(nmse, params)        <span class="cm"># 标量奖励</span></pre>
+</div>
+
+<div class="card">
+<h3>3.2 奖励函数设计 ⭐</h3>
+<p><b>代码</b>: <code>libs/reward.py:19-57</code></p>
+
+<div class="hl">
+<b>当前策略：简单线性加权 (type: simple)</b><br><br>
+<code style="font-size:1.1em">R = −nmse × acc_weight − param_weight × (num_params / target_params)</code>
+</div>
+
+<table>
+  <tr><th>参数</th><th>默认值</th><th>含义</th></tr>
+  <tr><td>acc_weight</td><td>1.0</td><td>性能权重 — NMSE越好奖励越高</td></tr>
+  <tr><td>param_weight</td><td>0.1</td><td>参数量惩罚 — 超过目标扣分</td></tr>
+  <tr><td>target_params</td><td>100000</td><td>目标参数量上限</td></tr>
+</table>
+
+<h4>数值举例</h4>
+<pre><span class="cm">架构A: nmse=-32, params=120000</span>
+  perf_score = -(-32) × 1.0 = 32.0
+  param_ratio = 120000 / 100000 = 1.2
+  param_penalty = 0.1 × 1.2 = 0.12
+  <b>R_A = 32.0 − 0.12 = 31.88</b>  ✅ 高分
+
+<span class="cm">架构B: nmse=-28, params=80000</span>
+  <b>R_B = 28.0 − 0.08 = 27.92</b>  ❌ 性能差
+
+<span class="cm">架构C: nmse=-32, params=200000</span>
+  <b>R_C = 32.0 − 0.20 = 31.80</b>  ⚠️ 性能好但太大</pre>
+
+<div class="hl r">
+<b>设计要点</b><br>
+• NMSE取负号后变成正数，性能越好分数越高<br>
+• 延迟奖励：整个架构生成完毕才给一次奖励，中间步骤 reward=0<br>
+• <b>奖励是PPO的唯一学习信号</b>：Controller完全靠这个标量知道"什么样的架构好"
+</div>
+</div>
+
+<!-- ====== 4. GAE ====== -->
+<h2 id="s4">4. 阶段三：GAE 优势计算</h2>
+
+<div class="card">
+<h3>4.1 为什么需要 GAE</h3>
+<p>NAS是序列决策——Controller分7步生成架构，但奖励只在最后一步给。<b>GAE将终端奖励沿时间轴反向回传</b>，让每一步都知道自己的贡献。</p>
+</div>
+
+<div class="card">
+<h3>4.2 计算过程 (NAS特化版)</h3>
+<p><b>代码</b>: <code>libs/ppo.py:116-152</code></p>
+
+<pre><span class="kw">for</span> t <span class="kw">in</span> reversed(range(7)):           <span class="cm"># t=6,5,4,3,2,1,0</span>
+    <span class="kw">if</span> t == 6:                           <span class="cm"># 最后一步: 直接拿奖励</span>
+        δ = reward − V(s₆)
+        A₆ = δ
+    <span class="kw">else</span>:                                <span class="cm"># 中间步骤: 奖励=0, 纯价值差</span>
+        δ = <span class="num">0.99</span> × V(s_{t+1}) − V(s_t)
+        A_t = δ + <span class="num">0.99</span>×<span class="num">0.95</span> × A_{t+1}
+
+<span class="cm"># 后处理</span>
+returns = A + V(s)                     <span class="cm"># Critic 训练目标</span>
+A = (A − mean(A)) / (std(A) + <span class="num">1e-8</span>)   <span class="cm"># 零均值单位方差归一化</span></pre>
+</div>
+
+<div class="card">
+<h3>4.3 直观理解</h3>
+<table>
+  <tr><th>时间步</th><th>V(s)</th><th>r</th><th>δ</th><th>A (累积)</th><th>含义</th></tr>
+  <tr><td>t=6</td><td>30</td><td>31.88</td><td>+1.88</td><td>+1.88</td><td>最后一步贡献了正的</td></tr>
+  <tr><td>t=5</td><td>29</td><td>0</td><td>0.99×30−29=0.7</td><td>0.7+0.94×1.88=2.47</td><td>继承了t=6的正优势</td></tr>
+  <tr><td>t=4</td><td>28</td><td>0</td><td>0.99×29−28=0.71</td><td>0.71+0.94×2.47=3.03</td><td>优势继续向前传递</td></tr>
+</table>
+<p>A_t > 0 → 这一步比预期好 → 增加概率；A_t < 0 → 这一步比预期差 → 降低概率</p>
+</div>
+
+<div class="hl">标准化后 advantages 均值=0，这就是Actor loss接近零的数学原因。全部detach后作为固定标签传入PPO更新。</div>
+
+<!-- ====== 5. PPO更新 ====== -->
+<h2 id="s5">5. 阶段四：PPO 更新循环</h2>
+<p><b>代码</b>: <code>libs/ppo.py:156-230 (_ppo_update)</code></p>
+
+<div class="card">
+<h3>5.1 循环结构</h3>
+<pre>epoch 1: randperm(16) → [3,12,0,7, 9,2,14,5, 1,8,11,15, 6,10,4,13]
+         minibatch[0]=[3,12,0,7]   → evaluate() → loss → backward() → step()
+         minibatch[1]=[9,2,14,5]   → evaluate() → loss → backward() → step()
+         minibatch[2]=[1,8,11,15]  → ...
+         minibatch[3]=[6,10,4,13]  → ...
+
+epoch 2: randperm(16) → [14,1,9,6,...]  ← 重新打乱, 不同组合
+         ...</pre>
+<p>每 epoch 重新打乱 → 16个样本以不同组合出现在minibatch中 → 更充分的梯度利用</p>
+</div>
+
+<div class="card">
+<h3>5.2 重新评估 evaluate() — 用新策略看旧动作</h3>
+<pre><span class="cm"># controller.evaluate(batch_archs, batch_actions) 内部:</span>
+<span class="kw">for</span> t <span class="kw">in</span> range(7):
+    h_t = LSTM(encode(arch[t-1]))      <span class="cm"># 用当前参数重新前向</span>
+    logits = actor_conv(h_t)           <span class="cm"># 当前Actor头输出</span>
+    dist = Categorical(logits=logits)
+    lp = dist.log_prob(action_old[t])  <span class="cm"># 用旧动作查新分布的概率 ← pi_new!</span>
+    ent = dist.entropy()               <span class="cm"># 当前分布的熵</span>
+    V = critic(h_t)                    <span class="cm"># 当前Critic估值</span></pre>
+</div>
+
+<div class="card">
+<h3>5.3 三项 Loss 详解</h3>
+
+<h4>Actor Loss — Clipped Surrogate</h4>
+<pre>ratio = exp(new_log_probs − old_log_probs)          <span class="cm"># (4,7)</span>
+surr1 = ratio × advantages                           <span class="cm"># 不加约束</span>
+surr2 = clamp(ratio, 0.8, 1.2) × advantages           <span class="cm"># clip约束</span>
+actor_loss = −mean( min(surr1, surr2) )               <span class="cm"># 取min = 安全阀</span></pre>
+
+<table>
+  <tr><th>advantage</th><th>ratio</th><th>min选谁</th><th>效果</th></tr>
+  <tr><td>+ (好动作)</td><td>ratio>1 (更倾向)</td><td>surr2 (clip截断)</td><td>不过度增加概率</td></tr>
+  <tr><td>+ (好动作)</td><td>ratio<1 (变冷淡)</td><td>surr1 (正常)</td><td>惩罚变冷淡</td></tr>
+  <tr><td>− (坏动作)</td><td>ratio<1 (变冷淡)</td><td>surr2 (clip截断)</td><td>不过度降低概率</td></tr>
+  <tr><td>− (坏动作)</td><td>ratio>1 (更倾向)</td><td>surr1 (正常)</td><td>惩罚更倾向</td></tr>
+</table>
+
+<h4>Critic Loss — MSE价值回归</h4>
+<pre>critic_loss = MSE(new_values, returns)    <span class="cm"># returns = A_GAE + V_old</span></pre>
+
+<h4>熵正则化 — 鼓励探索</h4>
+<pre>entropy = new_entropies.mean()            <span class="cm"># (4,7) → 标量</span></pre>
+
+<h4>总损失</h4>
+<pre>loss = actor_loss + <span class="num">0.5</span> × critic_loss − <span class="num">0.01</span> × entropy</pre>
+</div>
+
+<div class="card">
+<h3>5.4 梯度更新</h3>
+<pre>optimizer.zero_grad()
+loss.backward()
+clip_grad_norm_(max=<span class="num">0.5</span>)      <span class="cm"># 梯度裁剪, 防止爆炸</span>
+optimizer.step()</pre>
+</div>
+
+<!-- ====== 6. 反向传播 ====== -->
+<h2 id="s6">6. 阶段五：反向传播与梯度流</h2>
+<p><b>代码</b>: <code>libs/ppo.py:214-217</code></p>
+
+<div class="card">
+<h3>6.1 各项 Loss 对参数的梯度贡献</h3>
+
+<table class="grad-table">
+  <tr><th>Loss 项</th><th>LSTM + input_proj</th><th>Actor头</th><th>Critic头</th></tr>
+  <tr>
+    <td>actor_loss</td>
+    <td class="yes">✅ (通过h_t)</td>
+    <td class="yes">✅ (直接)</td>
+    <td class="no">❌</td>
+  </tr>
+  <tr>
+    <td>critic_loss</td>
+    <td class="yes">✅ (通过h_t)</td>
+    <td class="no">❌</td>
+    <td class="yes">✅ (直接)</td>
+  </tr>
+  <tr>
+    <td>entropy (−)</td>
+    <td class="yes">✅ (通过h_t)</td>
+    <td class="yes">✅ (直接)</td>
+    <td class="no">❌</td>
+  </tr>
+  <tr style="background:#ebf4ff;font-weight:bold">
+    <td>总计</td>
+    <td class="yes">✅✅✅ (三者之和)</td>
+    <td class="yes">✅✅ (actor+entropy)</td>
+    <td class="yes">✅ (仅critic)</td>
+  </tr>
+</table>
+</div>
+
+<div class="card">
+<h3>6.2 逐项梯度流详解</h3>
+
+<div class="g3">
+<div>
+<h4>Actor Loss 的梯度流</h4>
+<pre style="font-size:.78em">actor_loss
+    │
+    ▼
+ratio = exp(new−old)
+    │
+    ▼ gradient
+actor_conv / actor_kernel
+actor_init / actor_spline
+    │
+    ▼ gradient
+   h_t → LSTM → input_proj
+
+<span class="no">❌ Critic头 无梯度</span></pre>
+</div>
+
+<div>
+<h4>Critic Loss 的梯度流</h4>
+<pre style="font-size:.78em">critic_loss = MSE(V,ret)
+    │
+    ▼ gradient
+critic (128→128→64→1)
+    │
+    ▼ gradient
+   h_t → LSTM → input_proj
+
+<span class="no">❌ Actor头 无梯度</span></pre>
+</div>
+
+<div>
+<h4>Entropy 的梯度流</h4>
+<pre style="font-size:.78em">entropy = mean(H(π))
+    │
+    ├──→ actor_conv
+    ├──→ actor_kernel
+    ├──→ actor_init
+    └──→ actor_spline
+    │
+    ▼ gradient
+   h_t → LSTM → input_proj
+
+<span class="no">❌ Critic头 无梯度</span></pre>
+</div>
+</div>
+</div>
+
+<div class="card">
+<h3>6.3 第一轮 epoch 的特殊情况</h3>
+
+<div class="hl g">
+<b>epoch 1</b>: ratio = 1.0 (θ_new = θ_old 尚未更新)<br>
+advantages 零均值 → actor_loss ≈ 0 → Actor loss 不贡献有效梯度<br>
+<b>但</b>: critic_loss ≠ 0 (Critic随机初始化) + entropy ≠ 0<br>
+→ LSTM被 critic_loss 和 entropy 更新 → h_t 变了<br><br>
+<b>epoch 2</b>: h_t 变化 → new_log_probs ≠ old_log_probs → ratio ≠ 1.0<br>
+→ actor_loss 开始贡献梯度 → Actor头被更新<br><br>
+<b>结论</b>: 第一轮不浪费 — Critic和Entropy帮LSTM"热身"，为Actor的后续优化铺路
+</div>
+</div>
+
+<!-- ====== 7. 总结 ====== -->
+<h2 id="s7">7. 完整迭代总结</h2>
+
+<div class="card">
+<pre style="font-size:.84em; line-height:1.4">
+┌─────────────────────────────────────────────────────────────────┐
+│              一次完整的 train_one_iteration()                    │
+│                                                                 │
+│ ① forward(16) — 采样                                            │
+│    LSTM 逐时间步采样 → 16个架构                                  │
+│    记录: log_probs_old (16,7), values_old (16,7)                │
+│                                                                 │
+│ ② 评估 16个架构                                                  │
+│    for arch in architectures:                                   │
+│        metrics = train(arch)          # → nmse, params          │
+│        r = -nmse - 0.1×(params/100K) # 奖励函数                 │
+│    → rewards (16,)                                              │
+│                                                                 │
+│ ③ GAE 计算                                                      │
+│    for t in reversed(range(7)):                                 │
+│        A_t = δ_t + 0.94×A_{t+1}                                 │
+│    → advantages (16,7), returns (16,7)                          │
+│    → 全部 detach() → 切断梯度，当标签用                          │
+│                                                                 │
+│ ④ PPO 更新 ×4 epochs                                            │
+│    for epoch in range(4):                                       │
+│        indices = randperm(16)  # 每轮重新打乱                   │
+│        for start in 0,4,8,12: # 4个minibatch                   │
+│            evaluate(archs_batch) → new_log_probs, V_new, H_new  │
+│            ratio = exp(new - old)                                │
+│            actor_loss  = -mean(min(ratio×A, clip(ratio)×A))     │
+│            critic_loss = MSE(V_new, returns)                     │
+│            loss = actor + 0.5×critic - 0.01×H_new               │
+│            loss.backward()                                       │
+│            clip_grad_norm(0.5)                                   │
+│            optimizer.step()  # 更新Controller所有参数            │
+│                                                                 │
+│ ⑤ 返回 stats, architectures, rewards, nmse_list, params_list   │
+└─────────────────────────────────────────────────────────────────┘
+   重复 500 次 → 搜索完成 → 输出 Pareto 前沿
+</pre>
+</div>
+
+<div class="card">
+<h3>关键超参数速查</h3>
+<table>
+  <tr><th>参数</th><th>值</th><th>作用</th></tr>
+  <tr><td>rollouts_per_iter</td><td>16</td><td>每轮采样架构数</td></tr>
+  <tr><td>ppo_epochs</td><td>4</td><td>同一批数据的重复利用率</td></tr>
+  <tr><td>mini_batch_size</td><td>4</td><td>每次梯度更新用的样本数 (16÷4=4次更新/epoch)</td></tr>
+  <tr><td>clip_epsilon</td><td>0.2</td><td>PPO策略更新幅度上限 [0.8, 1.2]</td></tr>
+  <tr><td>gamma</td><td>0.99</td><td>折扣因子 — 未来奖励的重要程度</td></tr>
+  <tr><td>gae_lambda</td><td>0.95</td><td>GAE 偏差-方差权衡</td></tr>
+  <tr><td>lr</td><td>3e-4</td><td>Adam 学习率</td></tr>
+  <tr><td>value_loss_coef</td><td>0.5</td><td>Critic损失在总损失中的权重</td></tr>
+  <tr><td>entropy_coef</td><td>0.01</td><td>熵正则化强度 (越大探索越多)</td></tr>
+  <tr><td>max_grad_norm</td><td>0.5</td><td>梯度裁剪阈值 — 防止梯度爆炸</td></tr>
+  <tr><td>total_iterations</td><td>500</td><td>总迭代轮数</td></tr>
+</table>
+</div>
+
+<p style="text-align:center;color:var(--grey);margin:40px 0">PPO-NAS 前向过程详解 · 生成于 2026-06-05</p>
+
+</div>
+</body>
+</html>
