@@ -11,7 +11,7 @@ import logging
 
 from .model.controller import Controller
 from .model.dpd_model import evaluate_architecture
-from .model.search_space import architecture_to_str
+from .model.search_space import architecture_to_str, arch_to_action_indices
 from .ppo import PPOTrainer
 from .reward import ParetoFront
 
@@ -50,23 +50,28 @@ class NASEnvironment:
         ppo_cfg = config.get("ppo", {})
         ppo_cfg["reward"] = config.get("reward", {})
         ppo_cfg["short_epochs"] = config.get("evaluation", {}).get("short_epochs", 300)
-        ppo_cfg["output_dir"] = config.get("global", {}).get("output_dir", "output")
         ppo_cfg["log_interval"] = config.get("global", {}).get("log_interval", 5)
+        # output_dir 在下面创建目录后才确定
         self.trainer = PPOTrainer(self.controller, ppo_cfg)
 
         # -- Pareto 前沿 --
         self.pareto = ParetoFront()
 
         # -- 目录: log_nas/日期/时间/ --
-        from datetime import datetime
-        now = datetime.now()
+        from datetime import datetime, timezone, timedelta
+        tz_cn = timezone(timedelta(hours=8))   # 固定 UTC+8
+        now = datetime.now(tz_cn)
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%H-%M-%S")
+        logger.info(f"当前时间 (UTC+8): {now.strftime('%Y-%m-%d %H:%M:%S')}")
         base_dir = os.path.join("log_nas", date_str, time_str)
         self.output_dir = os.path.join(base_dir, "output")
         self.checkpoint_dir = os.path.join(base_dir, "checkpoints")
         os.makedirs(self.output_dir, exist_ok=True)
         os.makedirs(self.checkpoint_dir, exist_ok=True)
+
+        # 把动态路径同步给 PPO 训练器
+        self.trainer.config["output_dir"] = self.output_dir
 
         # -- 日志 --
         self.log_interval = config.get("global", {}).get("log_interval", 5)
@@ -93,20 +98,32 @@ class NASEnvironment:
 
         # ── Warm Start: 注入已知好架构 ──
         warm_cfg = self.config.get("warm_start", {})
+        warmup_archs = None
+        warmup_iters = warm_cfg.get("inject_iterations", 50)
+        warmup_interval = warm_cfg.get("inject_interval", 5)
+
         if warm_cfg.get("enabled", False) and warm_cfg.get("architecture"):
-            logger.info("Warm Start: 注入基线架构到 Pareto 前沿...")
             baseline = warm_cfg["architecture"]
+            # 先评估一次，加入 Pareto 前沿
             metrics = evaluate_architecture(baseline)
             nmse = metrics.get("nmse", 99)
             params = metrics.get("num_params", 0)
             added = self.pareto.add(nmse, params, baseline)
-            logger.info(f"  基线架构: res={nmse:.2f}dB, params={params}, "
-                        f"加入Pareto={'是' if added else '否(被支配)'}")
+            logger.info(f"Warm Start: 基线 res={nmse:.2f}dB, params={params}, "
+                        f"Pareto={'✓' if added else '被支配'}, "
+                        f"每 {warmup_interval} 轮注入, 持续 {warmup_iters} 轮")
+            # 转为动作索引序列
+            baseline_actions = arch_to_action_indices(baseline)
+            warmup_archs = [(baseline, baseline_actions)]
 
         for it in range(total_iter):
-            # 一轮 PPO 训练
+            # 一轮 PPO 训练 (warmup 期内每隔 N 轮注入一次基线架构)
+            do_inject = (warm_cfg.get("enabled", False)
+                         and it < warmup_iters
+                         and it % warmup_interval == 0)
+            inject = warmup_archs if do_inject else None
             stats, architectures, _, nmse_list, params_list = \
-                self.trainer.train_one_iteration(eval_fn)
+                self.trainer.train_one_iteration(eval_fn, warmup_archs=inject)
 
             # 更新 Pareto 前沿（直接复用 PPO 评估阶段的结果，无需重复训练）
             for arch, nmse, params in zip(architectures, nmse_list, params_list):
@@ -114,7 +131,8 @@ class NASEnvironment:
 
             # 日志
             if it % self.log_interval == 0:
-                self._log(it, stats)
+                tag = "[WARM]" if inject else ""
+                self._log(it, stats, tag)
 
             # 保存 checkpoint
             if it % self.save_interval == 0 and it > 0:
@@ -128,9 +146,9 @@ class NASEnvironment:
         self.save_results()
         self.save_checkpoint("final")
 
-    def _log(self, it, stats):
+    def _log(self, it, stats, tag=""):
         logger.info(
-            f"[{it:4d}] "
+            f"[{it:4d}]{tag} "
             f"R={stats['mean_reward']:.1f}[{stats.get('reward_min',0):.0f},{stats.get('reward_max',0):.0f}]±{stats.get('reward_std',0):.1f} | "
             f"res={stats['mean_nmse']:.1f}[{stats.get('nmse_min',99):.0f},{stats.get('nmse_max',99):.0f}]dB | "
             f"aL={stats.get('actor_loss',0):.3f} cL={stats.get('critic_loss',0):.3f} | "

@@ -40,13 +40,18 @@ class PPOTrainer:
         self.iteration = 0
         self.stats_history = []
 
-    def train_one_iteration(self, eval_fn=None):
+    def train_one_iteration(self, eval_fn=None, warmup_archs=None):
         """
         执行一轮 PPO 训练:
+          0. (可选) 注入已知好架构
           1. 采样架构
           2. 评估 → 得奖励
           3. 计算 GAE 优势
           4. PPO 更新（多轮）
+
+        参数:
+            eval_fn:      评估函数
+            warmup_archs: list of (architecture, action_indices), 注入的已知好架构
 
         返回:
             stats, architectures, rewards, nmse_list, params_list
@@ -67,6 +72,17 @@ class PPOTrainer:
         n_rollout = config.get("rollouts_per_iter", 16)
         architectures, log_probs, values, entropies, actions = \
             self.controller.forward(n_rollout)
+
+        # ── 1.5 Warmup: 注入已知好架构 ──
+        if warmup_archs:
+            warm_archs_cfg = [a for a, _ in warmup_archs]
+            warm_act_seq = [s for _, s in warmup_archs]
+            w_lp, w_v, w_e = self.controller.evaluate(warm_archs_cfg, warm_act_seq)
+            architectures.extend(warm_archs_cfg)
+            actions.extend(warm_act_seq)
+            log_probs = torch.cat([log_probs, w_lp], dim=0)
+            values = torch.cat([values, w_v], dim=0)
+            entropies = torch.cat([entropies, w_e], dim=0)
 
         # ── 2. 评估 ──
         rewards = []

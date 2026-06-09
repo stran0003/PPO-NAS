@@ -70,19 +70,20 @@ evaluation:
   full_epochs: 1000
 
 # ---- Warm Start: 注入已知好架构 ----
-# 把你的基线模型 7 层配置填在这里 (按 L1→L7 顺序)
-# 搜索开始前会先评估这个架构, 加入 Pareto 前沿作为参考锚点
+# L1(1x1)→L2(grouped,k=15)→L3(1x1)→L4(LUT,sp=8)→L5(1x1)→L6(grouped,k=15)→L7(1x1)
+# 每隔 inject_interval 轮注入一次，避免 reward 剧烈波动
 warm_start:
-  enabled: false          # 改成 true 启用
-  # 示例: 全部 grouped, kernel=15, spline=16
-  # architecture:
-  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
-  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
-  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
-  #   - {type: lut, spline: 16}
-  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
-  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
-  #   - {type: linear, kernel: 15, conv: grouped, init: center_spike}
+  enabled: false               # 改成 true 启用
+  inject_iterations: 50        # 总共注入多少轮
+  inject_interval: 5           # 每隔几轮注入一次 (5=每5轮注入1次, 避免剧烈波动)
+  architecture:
+    - {type: linear, kernel: 1, conv: "1x1", init: center_spike}
+    - {type: linear, kernel: 15, conv: grouped, init: center_spike}
+    - {type: linear, kernel: 1, conv: "1x1", init: center_spike}
+    - {type: lut, spline: 8}
+    - {type: linear, kernel: 1, conv: "1x1", init: center_spike}
+    - {type: linear, kernel: 15, conv: grouped, init: center_spike}
+    - {type: linear, kernel: 1, conv: "1x1", init: center_spike}
 
 # ---- 搜索加速（可选）----
 nosh:

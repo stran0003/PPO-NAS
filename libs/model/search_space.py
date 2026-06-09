@@ -98,6 +98,37 @@ def decode_actions(layer_idx: int, action_indices: list) -> dict:
 # 特征编码
 # ============================================================
 
+def arch_to_action_indices(architecture: list) -> list:
+    """
+    把架构配置反向编码为动作索引序列（decode_actions 的逆操作）。
+    用于 warm start: 把已知好架构喂给 Controller.evaluate()。
+
+    返回: list of list, 每层一个 action_indices
+    """
+    indices_seq = []
+    for t, action in enumerate(architecture):
+        if LAYER_TYPES[t] == "linear":
+            conv = action.get("conv", CONV_TYPES[0])
+            c_idx = CONV_TYPES.index(conv)
+
+            if conv == "skip":
+                k_idx = -1
+                i_idx = -1
+            elif conv == "1x1":
+                k_idx = -1
+                i_idx = INIT_STRATEGIES.index(action.get("init", INIT_STRATEGIES[0]))
+            else:  # grouped
+                kernel = action.get("kernel", KERNEL_SIZES[0])
+                k_idx = KERNEL_SIZES.index(kernel) if kernel in KERNEL_SIZES else 0
+                i_idx = INIT_STRATEGIES.index(action.get("init", INIT_STRATEGIES[0]))
+            indices_seq.append([c_idx, k_idx, i_idx])
+        else:  # LUT
+            sp = action.get("spline", SPLINE_COUNTS[0])
+            s_idx = SPLINE_COUNTS.index(sp) if sp in SPLINE_COUNTS else 0
+            indices_seq.append([s_idx])
+    return indices_seq
+
+
 def encode_layer_action(action: dict) -> list:
     """
     把一个层的完整配置编码成特征向量（给 LSTM 输入用）。
