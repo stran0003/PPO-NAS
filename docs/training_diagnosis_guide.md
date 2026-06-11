@@ -66,8 +66,8 @@ res=[4,12]   → 搜索收敛到优质区域 → 考虑切换到 Phase 2
 
 | 看什么 | 哪里看 | 判断 |
 |---|---|---|
-| A 是否从 t=0 到 t=6 衰减 | 同一架构的 A_raw 列，t=0 应 > t=6 | A_0 > A_6 说明远期信息传到了前面 ✅ |
-| A_0 和 A_6 比值 | A_raw t=0 / A_raw t=6 | 应在 0.5~0.7 之间（γλ 衰减）。太接近 0 说明信息传不回来 → 增大 γ 或 λ |
+| A_raw 是否随 t 递减到 0 | 同一架构从 t=6 往 t=0 看 A_raw | γλ 衰减意味着 t=6 的 δ 传到 t=0 只剩 ~69%。但如果中间步 δ 也为正，A_0 可能反而更大。关键是看 A_raw 在好/差架构间是否有区分度 |
+| 信号是否能传到前面 | A_raw t=0 的绝对值 | 如果 t=0 的 A_raw ≈ 0 但 t=6 很大 → 信号没传到前面 → 增大 γ 或 λ |
 | 中间步 δ 是否忽正忽负 | 同一架构 δ 列 | 好架构大部分 δ>0，差架构大部分 δ<0 |
 
 ### 3.3 按 conv_type 分组比较
@@ -107,7 +107,7 @@ Excel 筛选 `conv_type` 列，看 grouped / 1x1 / skip 的 A_norm 均值：
 ```
 ✅ 正常: Actor loss 在 0 附近振荡，Critic loss 持续下降
 ⚠️ 异常: Actor loss 突然飙升 → KL 爆炸，策略崩了
-🔧 调法: 降 lr，增大 clip_epsilon
+🔧 调法: 降 lr，减小 clip_epsilon（收紧更新幅度）
 ⚠️ 异常: Critic loss 不降 → Critic 没学到 V(s)
 🔧 调法: 增大 value_loss_coef，等更多轮
 ```
@@ -193,7 +193,7 @@ Excel 筛选 `conv_type` 列，看 grouped / 1x1 / skip 的 A_norm 均值：
 | res 全挤在一起 | `acc_weight` | ↑ 增大 (3→5→8) |
 | 好架构太少 | `temp_init` / `rollouts_per_iter` | ↑ |
 | 探索过早枯竭 | `temp_final` / `entropy_coef` | ↑ |
-| KL 飙升 | `lr` / `clip_epsilon` | ↓ lr / ↑ ε |
+| KL 飙升 | `lr` / `clip_epsilon` | ↓ lr / ↓ ε |
 | Critic 不学习 | `value_loss_coef` | ↑ |
 | 信号传不到前面 | `gamma` / `gae_lambda` | ↑ (0.99→0.995) |
 | 训练太慢 | `rollouts_per_iter` / `ppo_epochs` | ↑ |
