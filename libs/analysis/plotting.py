@@ -293,6 +293,75 @@ def plot_gae_heatmap(csv_path="output/gae_debug.csv",
     print(f"[Plot] GAE heatmap -> {save_path}")
 
 
+@need_mpl
+def plot_gae_heatmap_series(csv_path="output/gae_debug.csv",
+                             save_path="output/plots/gae_heatmap_series.png",
+                             num_panels=4):
+    """
+    从 gae_debug.csv 读取数据, 等间距选取 num_panels 轮,
+    画出 A_norm 热力图序列, 展示 GAE 信用分配随训练的变化趋势。
+
+    每行 = 一个迭代轮次, 每列 = 时间步 (L1~L7)。
+    """
+    import csv as _csv
+    if not os.path.exists(csv_path):
+        print(f"[Skip] GAE series: {csv_path} not found")
+        return
+
+    # 读取所有轮次的数据, 按 iteration 分组
+    from collections import defaultdict
+    iter_data = defaultdict(list)  # iter → list of rows
+    with open(csv_path, "r") as f:
+        for row in _csv.DictReader(f):
+            it = int(row["iteration"])
+            iter_data[it].append(row)
+
+    if not iter_data:
+        print("[Skip] GAE series: no data")
+        return
+
+    # 等间距选取 num_panels 轮
+    all_iters = sorted(iter_data.keys())
+    if len(all_iters) <= num_panels:
+        selected = all_iters
+    else:
+        step = max(1, len(all_iters) // (num_panels - 1))
+        selected = [all_iters[i] for i in range(0, len(all_iters), step)]
+        selected = selected[:num_panels]
+
+    B = 16
+    T = 7
+    fig, axes = plt.subplots(1, len(selected), figsize=(4 * len(selected), 5))
+    if len(selected) == 1:
+        axes = [axes]
+
+    for ax, it in zip(axes, selected):
+        rows = iter_data[it]
+        mat = np.full((B, T), np.nan)
+        for row in rows:
+            b = int(row["arch_idx"])
+            t = int(row["step"])
+            if b < B and t < T:
+                mat[b, t] = float(row["A_norm"])
+
+        im = ax.imshow(mat, aspect="auto", cmap="RdBu_r",
+                       vmin=-2.5, vmax=2.5, interpolation="nearest")
+        ax.set_title(f"Iter {it}")
+        ax.set_xlabel("Time Step")
+        ax.set_ylabel("Arch Index" if ax == axes[0] else "")
+        ax.set_xticks(range(T))
+        ax.set_xticklabels([f"L{i+1}" for i in range(T)])
+        ax.set_yticks(range(0, B, 4))
+
+    plt.colorbar(im, ax=axes[-1], shrink=0.8, label="A_norm")
+    plt.suptitle("GAE Advantage Evolution (A_norm)", fontsize=13, y=1.02)
+    plt.tight_layout()
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    plt.savefig(save_path, bbox_inches="tight")
+    plt.close()
+    print(f"[Plot] GAE series ({len(selected)} panels) -> {save_path}")
+
+
 def _value_centered_bins(values):
     """给定一组离散值，返回以每个值为中心的直方图 bin 边界。
 

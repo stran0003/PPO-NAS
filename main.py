@@ -154,11 +154,12 @@ def run_analysis(args):
         plot_distribution(pareto_data, os.path.join(output_dir, "plots", "distribution.png"))
 
     # GAE 热力图（如果 gae_debug.csv 存在）
-    from libs.analysis.plotting import plot_gae_heatmap
-    plot_gae_heatmap(
-        csv_path=os.path.join(output_dir, "gae_debug.csv"),
-        save_path=os.path.join(output_dir, "plots", "gae_heatmap.png"),
-    )
+    from libs.analysis.plotting import plot_gae_heatmap, plot_gae_heatmap_series
+    gae_csv = os.path.join(output_dir, "gae_debug.csv")
+    plot_gae_heatmap(gae_csv,
+        save_path=os.path.join(output_dir, "plots", "gae_heatmap.png"))
+    plot_gae_heatmap_series(gae_csv,
+        save_path=os.path.join(output_dir, "plots", "gae_heatmap_series.png"))
 
 
 def _save_plots(env):
@@ -183,11 +184,12 @@ def _save_plots(env):
     if pareto_data:
         plot_distribution(pareto_data, os.path.join(plot_dir, "distribution.png"))
 
-    from libs.analysis.plotting import plot_gae_heatmap
-    plot_gae_heatmap(
-        csv_path=os.path.join(out, "gae_debug.csv"),
-        save_path=os.path.join(plot_dir, "gae_heatmap.png"),
-    )
+    from libs.analysis.plotting import plot_gae_heatmap, plot_gae_heatmap_series
+    gae_csv = os.path.join(out, "gae_debug.csv")
+    plot_gae_heatmap(gae_csv,
+        save_path=os.path.join(plot_dir, "gae_heatmap.png"))
+    plot_gae_heatmap_series(gae_csv,
+        save_path=os.path.join(plot_dir, "gae_heatmap_series.png"))
 
 
 # ============================================================

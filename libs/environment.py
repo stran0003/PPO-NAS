@@ -104,10 +104,17 @@ class NASEnvironment:
 
         if warm_cfg.get("enabled", False) and warm_cfg.get("architecture"):
             baseline = warm_cfg["architecture"]
+            # 先评估一次，加入 Pareto 前沿作为参照锚点
+            metrics = evaluate_architecture(baseline)
+            nmse = metrics.get("nmse", 99)
+            params = metrics.get("num_params", 0)
+            added = self.pareto.add(nmse, params, baseline)
+            logger.info(f"Warm Start: 基线 res={nmse:.2f}dB, params={params}, "
+                        f"Pareto={'✓' if added else '被支配'}, "
+                        f"每 {warmup_interval} 轮注入, 持续 {warmup_iters} 轮")
+            # 转为动作索引序列
             baseline_actions = arch_to_action_indices(baseline)
             warmup_archs = [(baseline, baseline_actions)]
-            logger.info(f"Warm Start: 基线架构已就绪, "
-                        f"每 {warmup_interval} 轮注入, 持续 {warmup_iters} 轮")
 
         for it in range(total_iter):
             # 一轮 PPO 训练 (warmup 期内每隔 N 轮注入一次基线架构)
